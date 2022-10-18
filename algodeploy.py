@@ -1,3 +1,18 @@
+#!/usr/bin/env python3
+"""algodeploy
+
+Usage:
+  algodeploy create
+  algodeploy start
+  algodeploy stop
+  algodeploy status
+  algodeploy goal [<goal_args>...]
+
+Options:
+  -h --help     Show this screen.
+  --version     Show version.
+"""
+from docopt import docopt
 import urllib.request
 from tqdm import tqdm
 from pathlib import Path
@@ -7,6 +22,7 @@ import re
 import tarfile
 import shutil
 import subprocess
+import sys
 
 # https://stackoverflow.com/a/53877507
 class DownloadProgressBar(tqdm):
@@ -24,11 +40,25 @@ class AlgoDeploy:
         self.data_dir = Path.joinpath(self.localnet_dir, "data", "Node")
         self.bin_dir = Path.joinpath(self.localnet_dir, "bin")
 
+    def parse_args(self, args=sys.argv[1:]):
+        arguments = docopt(__doc__, args, version='algodeploy 0.1.0')
+        if arguments['create']:
+            self.create()
+        elif arguments['start']:
+            self.goal("node start")
+        elif arguments['stop']:
+            self.goal("node stop")
+        elif arguments['status']:
+            self.goal("node status")
+        elif arguments['goal']:
+            self.goal(' '.join(args[1:]))
+
+    def goal(self, args):
+        self.cmd(f'{Path.joinpath(self.bin_dir, "goal")} -d {self.data_dir} {args}')
+
+    def create(self):
         self.download_dir.mkdir(mode = 0o755, parents=True, exist_ok=True)
 
-        self.get_node_software()
-
-    def get_node_software(self):
         version_string = self.get_version()
         version = re.findall('\d+\.\d+\.\d+', version_string)[0]
         system = platform.system().lower()
@@ -126,4 +156,5 @@ class AlgoDeploy:
         cmd_function(f"cd {src_dir} && mkdir -p ../../localnet/bin && cp $HOME/go/bin/* ../../localnet/bin/")
 
 if __name__ == "__main__":
-    AlgoDeploy()
+    ad = AlgoDeploy()
+    ad.parse_args()
