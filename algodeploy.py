@@ -133,10 +133,24 @@ class AlgoDeploy:
 
         self.cmd(f'C:\\msys64\\usr\\bin\\env MSYSTEM=MINGW64 /usr/bin/bash -lc "{cmd_str}"')
 
+    def prompt(self, text):
+        reply = None
+        while reply not in ("y", "n"):
+            reply = input(f"{text} (y/n): ").casefold()
+        return (reply == "y")
+    
     def build_from_source(self, tag):
         cmd_function = self.cmd
 
         if platform.system() == "Windows":
+            if not Path('C:\\msys64\\usr\\bin\\env').is_file():
+                if not self.prompt('Install msys2 to C:\\msys64?'):
+                    exit()
+
+                installer_path = Path.joinpath(self.download_dir, 'msys2-x86_64-20220904.exe')
+                self.download_url('https://github.com/msys2/msys2-installer/releases/download/2022-09-04/msys2-x86_64-20220904.exe', installer_path)
+                self.cmd(f'{installer_path} install --root C:\msys64 --confirm-command')
+
             cmd_function = self.msys_cmd
             cmd_function("sed -i 's/^CheckSpace/#CheckSpace/g' /etc/pacman.conf")
             cmd_function("pacman -S --disable-download-timeout --noconfirm --needed mingw-w64-x86_64-go")
