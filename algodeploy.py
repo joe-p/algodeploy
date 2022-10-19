@@ -23,6 +23,7 @@ import tarfile
 import shutil
 import subprocess
 import sys
+import json
 
 # https://stackoverflow.com/a/53877507
 class DownloadProgressBar(tqdm):
@@ -40,18 +41,52 @@ class AlgoDeploy:
         self.data_dir = Path.joinpath(self.localnet_dir, "data", "Node")
         self.bin_dir = Path.joinpath(self.localnet_dir, "bin")
 
+    def config(self):
+        kmd_dir = list(self.data_dir.glob("kmd-*"))[0]
+        kmd_config = Path.joinpath(kmd_dir, "kmd_config.json")
+        self.update_json(kmd_config, address="0.0.0.0:4002", allowed_origins=["*"])
+
+        algod_config = Path.joinpath(self.data_dir, "config.json")
+        self.update_json(
+            algod_config, 
+            EndpointAddress="0.0.0.0:4001", 
+            EnableDeveloperAPI=True,
+            Archival=False,
+            IsIndexerActive=False,
+        )
+
+        kmd_token = open(Path.joinpath(kmd_dir, "kmd.token"), 'w')
+        algod_token = open(Path.joinpath(self.data_dir, "algod.token"), 'w')
+        kmd_token.write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        algod_token.write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+
     def parse_args(self, args=sys.argv[1:]):
         arguments = docopt(__doc__, args, version='algodeploy 0.1.0')
         if arguments['create']:
             self.create()
         elif arguments['start']:
             self.goal("node start")
+            self.goal('kmd start -t 0')
         elif arguments['stop']:
             self.goal("node stop")
+            self.goal("kmd stop")
         elif arguments['status']:
             self.goal("node status")
         elif arguments['goal']:
             self.goal(' '.join(args[1:]))
+
+    def update_json(self, file, **kwargs):
+        if Path.exists(file):
+            with open(file, 'r+') as f:
+                data = json.load(f)
+                data = { **data, **kwargs }
+                f.seek(0)        
+                json.dump(data, f, indent=4)
+                f.truncate()
+        else:
+            with open(file, 'w+') as f:
+                json.dump(kwargs, f, indent=4)
+                f.truncate()
 
     def goal(self, args):
         self.cmd(f'{Path.joinpath(self.bin_dir, "goal")} -d {self.data_dir} {args}')
@@ -69,7 +104,6 @@ class AlgoDeploy:
         url = f'https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}'
 
         shutil.rmtree(path=self.localnet_dir, ignore_errors=True)
-
         try:
             self.download_url(url, tarball_path)
             print("Extracting node software...")
@@ -85,15 +119,24 @@ class AlgoDeploy:
             self.build_from_source(version_string)
 
         template_path = Path.joinpath(self.download_dir, "template.json")
-        goal_path = Path.joinpath(self.bin_dir, "goal")
 
         print("Downloading localnet template...")
         self.download_url("https://raw.githubusercontent.com/joe-p/docker-algorand/master/algorand-node/template.json", template_path)
-
+        
         print("Creating localnet...")
-        self.cmd(f'{goal_path} network create --network localnet --template {template_path} --rootdir {self.data_dir}')
-        self.cmd(f'{goal_path} -d {self.data_dir} node start')
-        self.cmd(f'{goal_path} -d {self.data_dir} node status')
+        self.goal(f'network create --network localnet --template {template_path} --rootdir {Path.joinpath(self.localnet_dir, "data")}')
+        
+        print("Configuring localnet...")
+        self.goal('node start')
+        self.goal('kmd start -t 0')
+        self.config()
+        self.goal('node stop')
+        self.goal('kmd stop')
+
+        print("Starting localnet...")
+        self.goal('node start')
+        self.goal('kmd start -t 0')
+        self.goal('node status')
 
     def download_url(self, url, output_path):
         with DownloadProgressBar(unit='B', unit_scale=True,
