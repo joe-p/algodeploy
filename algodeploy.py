@@ -66,6 +66,7 @@ class AlgoDeploy:
     def parse_args(self, args=sys.argv[1:]):
         arguments = docopt(__doc__, args, version="algodeploy 0.1.0")
         if arguments["create"]:
+            # Stop algod and kmd if they are running to orphaned processes
             self.goal("node stop", exit_on_error=False, silent=True)
             self.goal("kmd stop", exit_on_error=False, silent=True)
             self.create()
@@ -103,8 +104,8 @@ class AlgoDeploy:
     def create(self):
         self.download_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-        version_string = self.get_version()
-        version = re.findall("\d+\.\d+\.\d+", version_string)[0]
+        version_string = self.get_version()  # For example: v3.10.0-stable
+        version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
         system = platform.system().lower()
         machine = platform.machine().lower()
 
@@ -112,7 +113,10 @@ class AlgoDeploy:
         tarball_path = Path.joinpath(self.download_dir, tarball)
         url = f"https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}"
 
+        # remove previous localnet directory for a clean install
         shutil.rmtree(path=self.localnet_dir, ignore_errors=True)
+
+        # First attempt to download tarball, but fall back to building from source
         try:
             self.download_url(url, tarball_path)
             print("Extracting node software...")
@@ -126,9 +130,8 @@ class AlgoDeploy:
             print("Failed to download node software. Building from source...")
             self.build_from_source(version_string)
 
-        template_path = Path.joinpath(self.download_dir, "template.json")
-
         print("Downloading localnet template...")
+        template_path = Path.joinpath(self.download_dir, "template.json")
         self.download_url(
             "https://raw.githubusercontent.com/joe-p/docker-algorand/master/algorand-node/template.json",
             template_path,
@@ -140,11 +143,13 @@ class AlgoDeploy:
         )
 
         print("Configuring localnet...")
-        self.goal("node start")
-        self.goal("kmd start -t 0")
+        # Temporarily start algod and kmd to generate directories and config files
+        self.goal("node start", silent=True)
+        self.goal("kmd start -t 0", silent=True)
+        self.goal("node stop", silent=True)
+        self.goal("kmd stop", silent=True)
+
         self.config()
-        self.goal("node stop")
-        self.goal("kmd stop")
 
         print("Starting localnet...")
         self.goal("node start")
@@ -152,6 +157,9 @@ class AlgoDeploy:
         self.goal("node status")
 
     def download_url(self, url, output_path):
+        """
+        Download a file from a URL to a specified path with a progress bar
+        """
         with DownloadProgressBar(
             unit="B", unit_scale=True, miniters=1, desc=url.split("/")[-1]
         ) as t:
@@ -160,6 +168,9 @@ class AlgoDeploy:
             )
 
     def get_version(self):
+        """
+        Get the latest stable release from github
+        """
         print("Getting latest node version...")
         releases = requests.get(
             "https://api.github.com/repos/algorand/go-algorand/releases"
@@ -170,6 +181,9 @@ class AlgoDeploy:
 
     # https://stackoverflow.com/a/57970619
     def cmd(self, cmd_str, exit_on_error=True, silent=False):
+        """
+        Execute a system command with realtime output
+        """
         if not silent:
             print(f"+ {cmd_str}")
 
@@ -198,6 +212,10 @@ class AlgoDeploy:
         return rc
 
     def msys_cmd(self, cmd_str, exit_on_error=True, silent=False):
+        """
+        On Windows, execute a command with realtime output in a msys2/MINGW64 shell
+        """
+        # Change paths in the command to be POSIX style
         cmd_str = cmd_str.replace("\\", "/")
         cmd_str = cmd_str.replace("C:", "/c")
 
@@ -218,6 +236,8 @@ class AlgoDeploy:
         cmd_function = self.cmd
 
         if platform.system() == "Windows":
+            # Install msys2 if it's not already installed.
+            # Home directory the install path in case user isn't admin
             if not Path.joinpath(self.msys_dir, "usr/bin/env.exe").is_file():
                 if not self.prompt(f"Install msys2 to {self.msys_dir}?"):
                     exit()
@@ -234,8 +254,10 @@ class AlgoDeploy:
                 )
 
             cmd_function = self.msys_cmd
+            # pacman can sometimes hang when checking space in msys2 shell, so it has been disabled
             cmd_function("sed -i 's/^CheckSpace/#CheckSpace/g' /etc/pacman.conf")
 
+            # Download and install go package from mirror because pacman can sometimes be slow
             go_pkg = Path.joinpath(
                 self.download_dir, "mingw-w64-x86_64-go-1.19-1-any.pkg.tar.zst"
             )
@@ -245,6 +267,7 @@ class AlgoDeploy:
             )
             cmd_function(f"pacman -U --noconfirm --needed {go_pkg}")
 
+        # Download archive of given tag from github
         tarball_path = Path.joinpath(self.download_dir, f"{tag}.tar.gz")
         self.download_url(
             f"https://github.com/algorand/go-algorand/archive/{tag}.tar.gz",
@@ -252,6 +275,8 @@ class AlgoDeploy:
         )
 
         tarball = tarfile.open(tarball_path)
+
+        # Get the name of the directory that the archive will extract to and remove it if it exists
         src_dir = Path.joinpath(self.download_dir, Path(tarball.getnames()[0]).name)
         shutil.rmtree(path=src_dir, ignore_errors=True)
 
