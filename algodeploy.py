@@ -153,6 +153,7 @@ class AlgoDeploy:
 
     # https://stackoverflow.com/a/57970619
     def cmd(self, cmd_str):
+        print(f"+ {cmd_str}")
         process = subprocess.Popen(
             cmd_str,
             stdout=subprocess.PIPE,
@@ -179,7 +180,7 @@ class AlgoDeploy:
         cmd_str = cmd_str.replace("\\", "/")
         cmd_str = cmd_str.replace("C:", "/c")
 
-        env_path = Path.joinpath(self.msys_dir, "/usr/bin/env")
+        env_path = Path.joinpath(self.msys_dir, "usr/bin/env.exe")
         self.cmd(f'{env_path} MSYSTEM=MINGW64 /usr/bin/bash -lc "{cmd_str}"')
 
     def prompt(self, text):
@@ -192,7 +193,7 @@ class AlgoDeploy:
         cmd_function = self.cmd
 
         if platform.system() == "Windows":
-            if not self.msys_dir.is_file():
+            if not Path.joinpath(self.msys_dir, "usr/bin/env.exe").is_file():
                 if not self.prompt(f'Install msys2 to {self.msys_dir}?'):
                     exit()
 
@@ -202,7 +203,10 @@ class AlgoDeploy:
 
             cmd_function = self.msys_cmd
             cmd_function("sed -i 's/^CheckSpace/#CheckSpace/g' /etc/pacman.conf")
-            cmd_function("pacman -S --disable-download-timeout --noconfirm --needed mingw-w64-x86_64-go")
+            
+            go_pkg = Path.joinpath(self.download_dir, "mingw-w64-x86_64-go-1.19-1-any.pkg.tar.zst")
+            self.download_url("https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-go-1.19-1-any.pkg.tar.zst", go_pkg)
+            cmd_function(f"pacman -U --noconfirm --needed {go_pkg}")
 
         tarball_path = Path.joinpath(self.download_dir, f'{tag}.tar.gz')
         self.download_url(f'https://github.com/algorand/go-algorand/archive/{tag}.tar.gz', tarball_path)
