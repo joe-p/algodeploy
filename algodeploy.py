@@ -57,18 +57,19 @@ class AlgoDeploy:
             IsIndexerActive=False,
         )
 
+        token = "a" * 64
         kmd_token = open(Path.joinpath(kmd_dir, "kmd.token"), "w")
         algod_token = open(Path.joinpath(self.data_dir, "algod.token"), "w")
-        kmd_token.write(
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        )
-        algod_token.write(
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-        )
+        kmd_token.write(token)
+        algod_token.write(token)
+        kmd_token.close()
+        algod_token.close()
 
     def parse_args(self, args=sys.argv[1:]):
         arguments = docopt(__doc__, args, version="algodeploy 0.1.0")
         if arguments["create"]:
+            self.goal("node stop", exit_on_error=False, silent=True)
+            self.goal("kmd stop", exit_on_error=False, silent=True)
             self.create()
         elif arguments["start"]:
             self.goal("node start")
@@ -94,8 +95,12 @@ class AlgoDeploy:
                 json.dump(kwargs, f, indent=4)
                 f.truncate()
 
-    def goal(self, args):
-        self.cmd(f'{Path.joinpath(self.bin_dir, "goal")} -d {self.data_dir} {args}')
+    def goal(self, args, exit_on_error=True, silent=False):
+        self.cmd(
+            f'{Path.joinpath(self.bin_dir, "goal")} -d {self.data_dir} {args}',
+            exit_on_error,
+            silent,
+        )
 
     def create(self):
         self.download_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -167,8 +172,10 @@ class AlgoDeploy:
                 return release["tag_name"]
 
     # https://stackoverflow.com/a/57970619
-    def cmd(self, cmd_str):
-        print(f"+ {cmd_str}")
+    def cmd(self, cmd_str, exit_on_error=True, silent=False):
+        if not silent:
+            print(f"+ {cmd_str}")
+
         process = subprocess.Popen(
             cmd_str,
             stdout=subprocess.PIPE,
@@ -188,15 +195,21 @@ class AlgoDeploy:
                 print(realtime_output.strip(), flush=True)
 
         rc = process.wait()
-        if rc != 0:
+        if exit_on_error and rc != 0:
             exit(rc)
 
-    def msys_cmd(self, cmd_str):
+        return rc
+
+    def msys_cmd(self, cmd_str, exit_on_error=True, silent=False):
         cmd_str = cmd_str.replace("\\", "/")
         cmd_str = cmd_str.replace("C:", "/c")
 
         env_path = Path.joinpath(self.msys_dir, "usr/bin/env.exe")
-        self.cmd(f'{env_path} MSYSTEM=MINGW64 /usr/bin/bash -lc "{cmd_str}"')
+        self.cmd(
+            f'{env_path} MSYSTEM=MINGW64 /usr/bin/bash -lc "{cmd_str}"',
+            exit_on_error,
+            silent,
+        )
 
     def prompt(self, text):
         reply = None
