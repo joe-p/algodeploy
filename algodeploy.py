@@ -58,12 +58,10 @@ class AlgoDeploy:
         )
 
         token = "a" * 64
-        kmd_token = open(Path.joinpath(kmd_dir, "kmd.token"), "w")
-        algod_token = open(Path.joinpath(self.data_dir, "algod.token"), "w")
-        kmd_token.write(token)
-        algod_token.write(token)
-        kmd_token.close()
-        algod_token.close()
+        with open(Path.joinpath(kmd_dir, "kmd.token"), "w") as f:
+            f.write(token)
+        with open(Path.joinpath(self.data_dir, "algod.token"), "w") as f:
+            f.write(token)
 
     def parse_args(self, args=sys.argv[1:]):
         arguments = docopt(__doc__, args, version="algodeploy 0.1.0")
@@ -118,9 +116,8 @@ class AlgoDeploy:
         try:
             self.download_url(url, tarball_path)
             print("Extracting node software...")
-            file = tarfile.open(tarball_path)
-            file.extractall(path=self.localnet_dir)
-            file.close()
+            with tarfile.open(tarball_path) as f:
+                f.extractall(path=self.localnet_dir)
             shutil.rmtree(Path.joinpath(self.localnet_dir, "data"))
             shutil.rmtree(Path.joinpath(self.localnet_dir, "genesis"))
             shutil.rmtree(Path.joinpath(self.localnet_dir, "test-utils"))
