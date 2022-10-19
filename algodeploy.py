@@ -169,6 +169,10 @@ class AlgoDeploy:
 
             if realtime_output:
                 print(realtime_output.strip(), flush=True)
+        
+        rc = process.wait()
+        if rc != 0:
+            exit(rc)
 
     def msys_cmd(self, cmd_str):
         cmd_str = cmd_str.replace("\\", "/")
