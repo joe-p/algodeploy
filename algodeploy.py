@@ -32,6 +32,7 @@ class DownloadProgressBar(tqdm):
             self.total = tsize
         self.update(b * bsize - self.n)
 
+
 class AlgoDeploy:
     def __init__(self):
         self.home_dir = Path.home()
@@ -40,7 +41,7 @@ class AlgoDeploy:
         self.localnet_dir = Path.joinpath(self.algodeploy_dir, "localnet")
         self.data_dir = Path.joinpath(self.localnet_dir, "data", "Node")
         self.bin_dir = Path.joinpath(self.localnet_dir, "bin")
-        self.msys_dir = Path.joinpath(self.home_dir,'msys64')
+        self.msys_dir = Path.joinpath(self.home_dir, "msys64")
 
     def config(self):
         kmd_dir = list(self.data_dir.glob("kmd-*"))[0]
@@ -49,43 +50,47 @@ class AlgoDeploy:
 
         algod_config = Path.joinpath(self.data_dir, "config.json")
         self.update_json(
-            algod_config, 
-            EndpointAddress="0.0.0.0:4001", 
+            algod_config,
+            EndpointAddress="0.0.0.0:4001",
             EnableDeveloperAPI=True,
             Archival=False,
             IsIndexerActive=False,
         )
 
-        kmd_token = open(Path.joinpath(kmd_dir, "kmd.token"), 'w')
-        algod_token = open(Path.joinpath(self.data_dir, "algod.token"), 'w')
-        kmd_token.write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-        algod_token.write("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        kmd_token = open(Path.joinpath(kmd_dir, "kmd.token"), "w")
+        algod_token = open(Path.joinpath(self.data_dir, "algod.token"), "w")
+        kmd_token.write(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        )
+        algod_token.write(
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        )
 
     def parse_args(self, args=sys.argv[1:]):
-        arguments = docopt(__doc__, args, version='algodeploy 0.1.0')
-        if arguments['create']:
+        arguments = docopt(__doc__, args, version="algodeploy 0.1.0")
+        if arguments["create"]:
             self.create()
-        elif arguments['start']:
+        elif arguments["start"]:
             self.goal("node start")
-            self.goal('kmd start -t 0')
-        elif arguments['stop']:
+            self.goal("kmd start -t 0")
+        elif arguments["stop"]:
             self.goal("node stop")
             self.goal("kmd stop")
-        elif arguments['status']:
+        elif arguments["status"]:
             self.goal("node status")
-        elif arguments['goal']:
-            self.goal(' '.join(args[1:]))
+        elif arguments["goal"]:
+            self.goal(" ".join(args[1:]))
 
     def update_json(self, file, **kwargs):
         if Path.exists(file):
-            with open(file, 'r+') as f:
+            with open(file, "r+") as f:
                 data = json.load(f)
-                data = { **data, **kwargs }
-                f.seek(0)        
+                data = {**data, **kwargs}
+                f.seek(0)
                 json.dump(data, f, indent=4)
                 f.truncate()
         else:
-            with open(file, 'w+') as f:
+            with open(file, "w+") as f:
                 json.dump(kwargs, f, indent=4)
                 f.truncate()
 
@@ -93,16 +98,16 @@ class AlgoDeploy:
         self.cmd(f'{Path.joinpath(self.bin_dir, "goal")} -d {self.data_dir} {args}')
 
     def create(self):
-        self.download_dir.mkdir(mode = 0o755, parents=True, exist_ok=True)
+        self.download_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
         version_string = self.get_version()
-        version = re.findall('\d+\.\d+\.\d+', version_string)[0]
+        version = re.findall("\d+\.\d+\.\d+", version_string)[0]
         system = platform.system().lower()
         machine = platform.machine().lower()
 
-        tarball = f'node_stable_{system}-{machine}_{version}.tar.gz'
+        tarball = f"node_stable_{system}-{machine}_{version}.tar.gz"
         tarball_path = Path.joinpath(self.download_dir, tarball)
-        url = f'https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}'
+        url = f"https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}"
 
         shutil.rmtree(path=self.localnet_dir, ignore_errors=True)
         try:
@@ -122,31 +127,41 @@ class AlgoDeploy:
         template_path = Path.joinpath(self.download_dir, "template.json")
 
         print("Downloading localnet template...")
-        self.download_url("https://raw.githubusercontent.com/joe-p/docker-algorand/master/algorand-node/template.json", template_path)
-        
+        self.download_url(
+            "https://raw.githubusercontent.com/joe-p/docker-algorand/master/algorand-node/template.json",
+            template_path,
+        )
+
         print("Creating localnet...")
-        self.goal(f'network create --network localnet --template {template_path} --rootdir {Path.joinpath(self.localnet_dir, "data")}')
-        
+        self.goal(
+            f'network create --network localnet --template {template_path} --rootdir {Path.joinpath(self.localnet_dir, "data")}'
+        )
+
         print("Configuring localnet...")
-        self.goal('node start')
-        self.goal('kmd start -t 0')
+        self.goal("node start")
+        self.goal("kmd start -t 0")
         self.config()
-        self.goal('node stop')
-        self.goal('kmd stop')
+        self.goal("node stop")
+        self.goal("kmd stop")
 
         print("Starting localnet...")
-        self.goal('node start')
-        self.goal('kmd start -t 0')
-        self.goal('node status')
+        self.goal("node start")
+        self.goal("kmd start -t 0")
+        self.goal("node status")
 
     def download_url(self, url, output_path):
-        with DownloadProgressBar(unit='B', unit_scale=True,
-                                miniters=1, desc=url.split('/')[-1]) as t:
-            urllib.request.urlretrieve(url, filename=output_path, reporthook=t.update_to)
+        with DownloadProgressBar(
+            unit="B", unit_scale=True, miniters=1, desc=url.split("/")[-1]
+        ) as t:
+            urllib.request.urlretrieve(
+                url, filename=output_path, reporthook=t.update_to
+            )
 
     def get_version(self):
         print("Getting latest node version...")
-        releases = requests.get("https://api.github.com/repos/algorand/go-algorand/releases").json()
+        releases = requests.get(
+            "https://api.github.com/repos/algorand/go-algorand/releases"
+        ).json()
         for release in releases:
             if "stable" in release["tag_name"]:
                 return release["tag_name"]
@@ -159,19 +174,19 @@ class AlgoDeploy:
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             shell=True,
-            encoding='utf-8',
-            errors='replace'
+            encoding="utf-8",
+            errors="replace",
         )
 
         while True:
             realtime_output = process.stdout.readline()
 
-            if realtime_output == '' and process.poll() is not None:
+            if realtime_output == "" and process.poll() is not None:
                 break
 
             if realtime_output:
                 print(realtime_output.strip(), flush=True)
-        
+
         rc = process.wait()
         if rc != 0:
             exit(rc)
@@ -187,40 +202,58 @@ class AlgoDeploy:
         reply = None
         while reply not in ("y", "n"):
             reply = input(f"{text} (y/n): ").casefold()
-        return (reply == "y")
-    
+        return reply == "y"
+
     def build_from_source(self, tag):
         cmd_function = self.cmd
 
         if platform.system() == "Windows":
             if not Path.joinpath(self.msys_dir, "usr/bin/env.exe").is_file():
-                if not self.prompt(f'Install msys2 to {self.msys_dir}?'):
+                if not self.prompt(f"Install msys2 to {self.msys_dir}?"):
                     exit()
 
-                installer_path = Path.joinpath(self.download_dir, 'msys2-x86_64-20220904.exe')
-                self.download_url('https://github.com/msys2/msys2-installer/releases/download/2022-09-04/msys2-x86_64-20220904.exe', installer_path)
-                self.cmd(f'{installer_path} install --root {self.msys_dir} --confirm-command')
+                installer_path = Path.joinpath(
+                    self.download_dir, "msys2-x86_64-20220904.exe"
+                )
+                self.download_url(
+                    "https://github.com/msys2/msys2-installer/releases/download/2022-09-04/msys2-x86_64-20220904.exe",
+                    installer_path,
+                )
+                self.cmd(
+                    f"{installer_path} install --root {self.msys_dir} --confirm-command"
+                )
 
             cmd_function = self.msys_cmd
             cmd_function("sed -i 's/^CheckSpace/#CheckSpace/g' /etc/pacman.conf")
-            
-            go_pkg = Path.joinpath(self.download_dir, "mingw-w64-x86_64-go-1.19-1-any.pkg.tar.zst")
-            self.download_url("https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-go-1.19-1-any.pkg.tar.zst", go_pkg)
+
+            go_pkg = Path.joinpath(
+                self.download_dir, "mingw-w64-x86_64-go-1.19-1-any.pkg.tar.zst"
+            )
+            self.download_url(
+                "https://mirror.msys2.org/mingw/mingw64/mingw-w64-x86_64-go-1.19-1-any.pkg.tar.zst",
+                go_pkg,
+            )
             cmd_function(f"pacman -U --noconfirm --needed {go_pkg}")
 
-        tarball_path = Path.joinpath(self.download_dir, f'{tag}.tar.gz')
-        self.download_url(f'https://github.com/algorand/go-algorand/archive/{tag}.tar.gz', tarball_path)
-        
+        tarball_path = Path.joinpath(self.download_dir, f"{tag}.tar.gz")
+        self.download_url(
+            f"https://github.com/algorand/go-algorand/archive/{tag}.tar.gz",
+            tarball_path,
+        )
+
         tarball = tarfile.open(tarball_path)
         src_dir = Path.joinpath(self.download_dir, Path(tarball.getnames()[0]).name)
         shutil.rmtree(path=src_dir, ignore_errors=True)
 
         tarball.extractall(path=self.download_dir)
         tarball.close()
-        
+
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go ./scripts/configure_dev.sh")
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go make")
-        cmd_function(f"cd {src_dir} && mkdir -p ../../localnet/bin && cp $HOME/go/bin/* ../../localnet/bin/")
+        cmd_function(
+            f"cd {src_dir} && mkdir -p ../../localnet/bin && cp $HOME/go/bin/* ../../localnet/bin/"
+        )
+
 
 if __name__ == "__main__":
     ad = AlgoDeploy()
