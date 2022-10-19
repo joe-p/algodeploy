@@ -40,6 +40,7 @@ class AlgoDeploy:
         self.localnet_dir = Path.joinpath(self.algodeploy_dir, "localnet")
         self.data_dir = Path.joinpath(self.localnet_dir, "data", "Node")
         self.bin_dir = Path.joinpath(self.localnet_dir, "bin")
+        self.msys_dir = Path.joinpath(self.home_dir,'msys64')
 
     def config(self):
         kmd_dir = list(self.data_dir.glob("kmd-*"))[0]
@@ -178,7 +179,8 @@ class AlgoDeploy:
         cmd_str = cmd_str.replace("\\", "/")
         cmd_str = cmd_str.replace("C:", "/c")
 
-        self.cmd(f'C:\\msys64\\usr\\bin\\env MSYSTEM=MINGW64 /usr/bin/bash -lc "{cmd_str}"')
+        env_path = Path.joinpath(self.msys_dir, "/usr/bin/env")
+        self.cmd(f'{env_path} MSYSTEM=MINGW64 /usr/bin/bash -lc "{cmd_str}"')
 
     def prompt(self, text):
         reply = None
@@ -190,13 +192,13 @@ class AlgoDeploy:
         cmd_function = self.cmd
 
         if platform.system() == "Windows":
-            if not Path('C:\\msys64\\usr\\bin\\env').is_file():
-                if not self.prompt('Install msys2 to C:\\msys64?'):
+            if not self.msys_dir.is_file():
+                if not self.prompt(f'Install msys2 to {self.msys_dir}?'):
                     exit()
 
                 installer_path = Path.joinpath(self.download_dir, 'msys2-x86_64-20220904.exe')
                 self.download_url('https://github.com/msys2/msys2-installer/releases/download/2022-09-04/msys2-x86_64-20220904.exe', installer_path)
-                self.cmd(f'{installer_path} install --root C:\msys64 --confirm-command')
+                self.cmd(f'{installer_path} install --root {self.msys_dir} --confirm-command')
 
             cmd_function = self.msys_cmd
             cmd_function("sed -i 's/^CheckSpace/#CheckSpace/g' /etc/pacman.conf")
