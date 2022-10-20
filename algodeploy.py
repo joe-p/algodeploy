@@ -6,6 +6,7 @@ Usage:
   algodeploy start
   algodeploy stop
   algodeploy status
+  algodeploy reset
   algodeploy goal [<goal_args>...]
 
 Options:
@@ -63,23 +64,32 @@ class AlgoDeploy:
         with open(Path.joinpath(self.data_dir, "algod.token"), "w") as f:
             f.write(token)
 
+    def stop(self, silent=False):
+        if not silent:
+            print("Stopping localnet...")
+        self.goal("node stop", exit_on_error=False, silent=silent)
+        self.goal("kmd stop", exit_on_error=False, silent=silent)
+
+    def start(self):
+        print("Starting localnet...")
+        self.goal("node start")
+        self.goal("kmd start -t 0")
+        self.goal("node status")
+
     def parse_args(self, args=sys.argv[1:]):
         arguments = docopt(__doc__, args, version="algodeploy 0.1.0")
         if arguments["create"]:
-            # Stop algod and kmd if they are running to orphaned processes
-            self.goal("node stop", exit_on_error=False, silent=True)
-            self.goal("kmd stop", exit_on_error=False, silent=True)
             self.create()
         elif arguments["start"]:
-            self.goal("node start")
-            self.goal("kmd start -t 0")
+            self.start()
         elif arguments["stop"]:
-            self.goal("node stop")
-            self.goal("kmd stop")
+            self.stop()
         elif arguments["status"]:
             self.goal("node status")
         elif arguments["goal"]:
             self.goal(" ".join(args[1:]))
+        elif arguments["reset"]:
+            self.create()
 
     def update_json(self, file, **kwargs):
         if Path.exists(file):
@@ -101,7 +111,17 @@ class AlgoDeploy:
             silent,
         )
 
+    def restore_archive(self):
+        print(f"Restoring archive: {self.archive_tarball}")
+        with tarfile.open(self.archive_tarball) as f:
+            f.extractall(path=self.localnet_dir)
+
+        self.start()
+
     def create(self):
+        # Stop algod and kmd if they are running to orphaned processes
+        self.stop(silent=True)
+
         self.download_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
         version_string = self.get_version()  # For example: v3.10.0-stable
@@ -109,12 +129,23 @@ class AlgoDeploy:
         system = platform.system().lower()
         machine = platform.machine().lower()
 
-        tarball = f"node_stable_{system}-{machine}_{version}.tar.gz"
-        tarball_path = Path.joinpath(self.download_dir, tarball)
-        url = f"https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}"
+        archive_dir = Path.joinpath(self.algodeploy_dir, "archives")
+        archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        self.archive_tarball = Path.joinpath(
+            Path.joinpath(self.algodeploy_dir, "archives"),
+            f"localnet-{version_string}.tar.gz",
+        )
 
         # remove previous localnet directory for a clean install
         shutil.rmtree(path=self.localnet_dir, ignore_errors=True)
+
+        if self.archive_tarball.exists():
+            self.restore_archive()
+            exit(0)
+
+        tarball = f"node_stable_{system}-{machine}_{version}.tar.gz"
+        tarball_path = Path.joinpath(self.download_dir, tarball)
+        url = f"https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}"
 
         # First attempt to download tarball, but fall back to building from source
         try:
@@ -132,8 +163,8 @@ class AlgoDeploy:
 
         print("Downloading localnet template...")
         template_path = Path.joinpath(self.download_dir, "template.json")
-        self.download_url(
-            "https://raw.githubusercontent.com/joe-p/docker-algorand/master/algorand-node/template.json",
+        shutil.copyfile(
+            Path.joinpath(Path(__file__).resolve().parent, "template.json"),
             template_path,
         )
 
@@ -151,10 +182,14 @@ class AlgoDeploy:
 
         self.config()
 
+        with tarfile.open(
+            self.archive_tarball,
+            "w:gz",
+        ) as tar:
+            tar.add(self.localnet_dir, arcname=".")
+
         print("Starting localnet...")
-        self.goal("node start")
-        self.goal("kmd start -t 0")
-        self.goal("node status")
+        self.start()
 
     def download_url(self, url, output_path):
         """
@@ -202,7 +237,7 @@ class AlgoDeploy:
             if realtime_output == "" and process.poll() is not None:
                 break
 
-            if realtime_output:
+            if not silent and realtime_output:
                 print(realtime_output.strip(), flush=True)
 
         rc = process.wait()
