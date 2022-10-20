@@ -105,8 +105,13 @@ class AlgoDeploy:
                 f.truncate()
 
     def goal(self, args, exit_on_error=True, silent=False):
+        goal_path = Path.joinpath(self.bin_dir, "goal")
+
+        if platform.system() == "Windows":
+            goal_path = Path.joinpath(self.bin_dir, "goal.exe")
+
         self.cmd(
-            f'{Path.joinpath(self.bin_dir, "goal")} -d {self.data_dir} {args}',
+            f"{goal_path} -d {self.data_dir} {args}",
             exit_on_error,
             silent,
         )
@@ -123,6 +128,7 @@ class AlgoDeploy:
         self.stop(silent=True)
 
         self.download_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        self.bin_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
         version_string = self.get_version()  # For example: v3.10.0-stable
         version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
@@ -133,7 +139,7 @@ class AlgoDeploy:
         archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
         self.archive_tarball = Path.joinpath(
             Path.joinpath(self.algodeploy_dir, "archives"),
-            f"localnet-{version_string}.tar.gz",
+            f"localnet-{version_string}.tar",
         )
 
         # remove previous localnet directory for a clean install
@@ -182,9 +188,10 @@ class AlgoDeploy:
 
         self.config()
 
+        print("Creating archive...")
         with tarfile.open(
             self.archive_tarball,
-            "w:gz",
+            "w",
         ) as tar:
             tar.add(self.localnet_dir, arcname=".")
 
@@ -320,9 +327,21 @@ class AlgoDeploy:
 
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go ./scripts/configure_dev.sh")
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go make")
-        cmd_function(
-            f"cd {src_dir} && mkdir -p ../../localnet/bin && cp $HOME/go/bin/* ../../localnet/bin/"
-        )
+
+        for f in Path.joinpath(Path.joinpath(src_dir, "cmd")).glob("*"):
+            exe = Path.joinpath(
+                self.msys_dir,
+                "home",
+                self.home_dir.name,
+                "go",
+                "bin",
+                f"{f.name}.exe",
+            )
+            if exe.exists():
+                shutil.copyfile(
+                    exe,
+                    Path.joinpath(self.bin_dir, f"{f.name}.exe"),
+                )
 
 
 if __name__ == "__main__":
