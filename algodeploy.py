@@ -147,6 +147,18 @@ class AlgoDeploy:
             self.restore_archive()
             exit(0)
 
+        try:
+            self.download_url(
+                f"http://5.161.81.80/{self.archive_tarball.name}",
+                self.archive_tarball,
+            )
+        except:
+            pass
+
+        if self.archive_tarball.exists():
+            self.restore_archive()
+            exit(0)
+
         tarball = f"node_stable_{system}-{machine}_{version}.tar.gz"
         tarball_path = Path.joinpath(self.download_dir, tarball)
         url = f"https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}"
@@ -202,11 +214,12 @@ class AlgoDeploy:
         Download a file from a URL to a specified path with a progress bar
         """
         with DownloadProgressBar(
-            unit="B", unit_scale=True, miniters=1, desc=url.split("/")[-1]
+            unit="B", unit_scale=True, miniters=1, desc=url.split("/")[-1], leave=False
         ) as t:
             urllib.request.urlretrieve(
                 url, filename=output_path, reporthook=t.update_to
             )
+        print(f"Downloaded {url}")
 
     def get_version(self):
         """
