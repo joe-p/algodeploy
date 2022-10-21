@@ -7,21 +7,24 @@ Algodeploy is a tool for deploying an algorand node for development purposes wit
 To install algodeploy follow the steps below:
 
 1. Clone this repository: `git clone https://github.com/joe-p/algodeploy`
-2. Install requirements `cd algodeploy && pip install -r requirements.txt`
+2. Install requirements 
+    * Mac/Linux: `cd algodeploy && pip install -r requirements.txt`
+    * Windows: `cd algodeploy && py -m pip install -r requirements.txt`)
 
 # Usage
+**Note:** On Windows, prefix all commands with `py` to prevent a new Window from being opened
 
 ## Create Local Network
-To create and start a localnetwork: `python ./algodeploy.py create`
+To create and start a localnetwork: `./algodeploy.py create`
 
 ## Stop Local Network
-To stop `algod` and `kmd`: `python ./algodeploy.py stop`
+To stop `algod` and `kmd`: `./algodeploy.py stop`
 
 ## Start Local Network
-To start `algod` and `kmd`: `python ./algodeploy.py start`
+To start `algod` and `kmd`: `./algodeploy.py start`
 
 ## Goal Commands
-To run `goal` commands: `python ./algodeploy.py goal ...`
+To run `goal` commands: `./algodeploy.py goal ...`
 
 # Supported Environments
 On most systems, algodeploy will download the latest official binaries. On Windows, however, the binaries must be built from source and are not officially supported. The functionality on all systems is the same.
