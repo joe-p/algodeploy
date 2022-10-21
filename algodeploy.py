@@ -149,7 +149,7 @@ class AlgoDeploy:
 
         try:
             self.download_url(
-                f"http://5.161.81.80/{self.archive_tarball.name}",
+                f"https://algodeploy.joe-p.net/{self.archive_tarball.name}",
                 self.archive_tarball,
             )
         except:
