@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import json
+from yaspin import yaspin
 
 # https://stackoverflow.com/a/53877507
 class DownloadProgressBar(tqdm):
@@ -65,16 +66,12 @@ class AlgoDeploy:
             f.write(token)
 
     def stop(self, silent=False):
-        if not silent:
-            print("Stopping localnet...")
         self.goal("node stop", exit_on_error=False, silent=silent)
         self.goal("kmd stop", exit_on_error=False, silent=silent)
 
     def start(self):
-        print("Starting localnet...")
         self.goal("node start")
         self.goal("kmd start -t 0")
-        self.goal("node status")
 
     def parse_args(self, args=sys.argv[1:]):
         arguments = docopt(__doc__, args, version="algodeploy 0.1.0")
@@ -117,10 +114,11 @@ class AlgoDeploy:
         )
 
     def restore_archive(self):
-        print(f"Restoring archive: {self.archive_tarball}")
-        with tarfile.open(self.archive_tarball) as f:
-            f.extractall(path=self.localnet_dir)
+        with yaspin(text="Restoring archive"):
+            with tarfile.open(self.archive_tarball) as f:
+                f.extractall(path=self.localnet_dir)
 
+        print(f"Restored from {self.archive_tarball.name}")
         self.start()
 
     def create(self):
@@ -135,7 +133,7 @@ class AlgoDeploy:
         archive_dir = Path.joinpath(self.algodeploy_dir, "archives")
         self.archive_tarball = Path.joinpath(
             Path.joinpath(self.algodeploy_dir, "archives"),
-            f"localnet-{version_string}.tar",
+            f"localnet-{system}-{machine}_{version}.tar.gz",
         )
 
         # remove previous localnet directory for a clean install
@@ -156,16 +154,16 @@ class AlgoDeploy:
         # First attempt to download tarball, but fall back to building from source
         try:
             self.download_url(url, tarball_path)
-            print("Extracting node software...")
-            with tarfile.open(tarball_path) as f:
-                f.extractall(path=self.localnet_dir)
-            shutil.rmtree(Path.joinpath(self.localnet_dir, "data"))
-            shutil.rmtree(Path.joinpath(self.localnet_dir, "genesis"))
-            shutil.rmtree(Path.joinpath(self.localnet_dir, "test-utils"))
-            for exe in self.bin_dir.glob("*"):
-                if exe.name not in ["algod", "goal", "kmd", "tealdbg"]:
-                    exe_path = Path.joinpath(self.bin_dir, exe)
-                    exe_path.unlink()
+            with yaspin(text="Extracting node software"):
+                with tarfile.open(tarball_path) as f:
+                    f.extractall(path=self.localnet_dir)
+                shutil.rmtree(Path.joinpath(self.localnet_dir, "data"))
+                shutil.rmtree(Path.joinpath(self.localnet_dir, "genesis"))
+                shutil.rmtree(Path.joinpath(self.localnet_dir, "test-utils"))
+                for exe in self.bin_dir.glob("*"):
+                    if exe.name not in ["algod", "goal", "kmd", "tealdbg"]:
+                        exe_path = Path.joinpath(self.bin_dir, exe)
+                        exe_path.unlink()
 
         except:
             print("Failed to download node software. Building from source...")
@@ -177,26 +175,25 @@ class AlgoDeploy:
             template_path,
         )
 
-        print("Creating localnet...")
         self.goal(
             f'network create --network localnet --template {template_path} --rootdir {Path.joinpath(self.localnet_dir, "data")}'
         )
 
-        print("Configuring localnet...")
-        # Temporarily start algod and kmd to generate directories and config files
-        self.goal("node start", silent=True)
-        self.goal("kmd start -t 0", silent=True)
-        self.goal("node stop", silent=True)
-        self.goal("kmd stop", silent=True)
+        with yaspin(text="Configuring localnet"):
+            # Temporarily start algod and kmd to generate directories and config files
+            self.goal("node start", silent=True)
+            self.goal("kmd start -t 0", silent=True)
+            self.goal("node stop", silent=True)
+            self.goal("kmd stop", silent=True)
 
-        self.config()
+            self.config()
 
-        print("Creating archive...")
-        with tarfile.open(
-            self.archive_tarball,
-            "w",
-        ) as tar:
-            tar.add(self.localnet_dir, arcname=".")
+        with yaspin(text="Creating archive"):
+            with tarfile.open(
+                self.archive_tarball,
+                "w:gz",
+            ) as tar:
+                tar.add(self.localnet_dir, arcname=".")
 
         self.start()
 
@@ -215,13 +212,13 @@ class AlgoDeploy:
         """
         Get the latest stable release from github
         """
-        print("Getting latest node version...")
-        releases = requests.get(
-            "https://api.github.com/repos/algorand/go-algorand/releases"
-        ).json()
-        for release in releases:
-            if "stable" in release["tag_name"]:
-                return release["tag_name"]
+        with yaspin(text="Getting latest node version"):
+            releases = requests.get(
+                "https://api.github.com/repos/algorand/go-algorand/releases"
+            ).json()
+            for release in releases:
+                if "stable" in release["tag_name"]:
+                    return release["tag_name"]
 
     # https://stackoverflow.com/a/57970619
     def cmd(self, cmd_str, exit_on_error=True, silent=False):
