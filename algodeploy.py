@@ -127,16 +127,12 @@ class AlgoDeploy:
         # Stop algod and kmd if they are running to orphaned processes
         self.stop(silent=True)
 
-        self.download_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
-        self.bin_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
-
         version_string = self.get_version()  # For example: v3.10.0-stable
         version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
         system = platform.system().lower()
         machine = platform.machine().lower()
 
         archive_dir = Path.joinpath(self.algodeploy_dir, "archives")
-        archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
         self.archive_tarball = Path.joinpath(
             Path.joinpath(self.algodeploy_dir, "archives"),
             f"localnet-{version_string}.tar",
@@ -144,6 +140,10 @@ class AlgoDeploy:
 
         # remove previous localnet directory for a clean install
         shutil.rmtree(path=self.localnet_dir, ignore_errors=True)
+
+        self.download_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        self.bin_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
         if self.archive_tarball.exists():
             self.restore_archive()
@@ -162,12 +162,15 @@ class AlgoDeploy:
             shutil.rmtree(Path.joinpath(self.localnet_dir, "data"))
             shutil.rmtree(Path.joinpath(self.localnet_dir, "genesis"))
             shutil.rmtree(Path.joinpath(self.localnet_dir, "test-utils"))
+            for exe in self.bin_dir.glob("*"):
+                if exe.name not in ["algod", "goal", "kmd", "tealdbg"]:
+                    exe_path = Path.joinpath(self.bin_dir, exe)
+                    exe_path.unlink()
 
         except:
             print("Failed to download node software. Building from source...")
             self.build_from_source(version_string)
 
-        print("Downloading localnet template...")
         template_path = Path.joinpath(self.download_dir, "template.json")
         shutil.copyfile(
             Path.joinpath(Path(__file__).resolve().parent, "template.json"),
@@ -195,7 +198,6 @@ class AlgoDeploy:
         ) as tar:
             tar.add(self.localnet_dir, arcname=".")
 
-        print("Starting localnet...")
         self.start()
 
     def download_url(self, url, output_path):
@@ -328,20 +330,23 @@ class AlgoDeploy:
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go ./scripts/configure_dev.sh")
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go make")
 
-        for f in Path.joinpath(Path.joinpath(src_dir, "cmd")).glob("*"):
-            exe = Path.joinpath(
-                self.msys_dir,
-                "home",
-                self.home_dir.name,
-                "go",
-                "bin",
-                f"{f.name}.exe",
-            )
-            if exe.exists():
-                shutil.copyfile(
-                    exe,
-                    Path.joinpath(self.bin_dir, f"{f.name}.exe"),
+        for bin in ["algod", "goal", "kmd", "tealdbg"]:
+            if platform.system() == "Windows":
+                bin_path = Path.joinpath(
+                    self.msys_dir,
+                    "home",
+                    self.home_dir.name,
+                    "go",
+                    "bin",
+                    f"{bin}.exe",
                 )
+            else:
+                bin_path = Path.joinpath(self.home_dir, "go", "bin", bin)
+
+            shutil.copyfile(
+                bin_path,
+                Path.joinpath(self.bin_dir, bin_path.name),
+            )
 
 
 if __name__ == "__main__":
