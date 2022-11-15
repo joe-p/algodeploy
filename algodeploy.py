@@ -136,6 +136,9 @@ class AlgoDeploy:
         system = platform.system().lower()
         machine = platform.machine().lower()
 
+        if machine == "x86_64":
+            machine = 'amd64'
+
         archive_dir = Path.joinpath(self.algodeploy_dir, "archives")
         self.archive_tarball = Path.joinpath(
             Path.joinpath(self.algodeploy_dir, "archives"),
