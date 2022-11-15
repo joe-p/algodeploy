@@ -2,7 +2,7 @@
 """algodeploy
 
 Usage:
-  algodeploy create
+  algodeploy create [<release>]
   algodeploy start
   algodeploy stop
   algodeploy status
@@ -74,17 +74,22 @@ class AlgoDeploy:
         self.goal("kmd start -t 0")
 
     def parse_args(self, args=sys.argv[1:]):
+        # Handle goal seperately to avoid conflicts with docopt on --help and --version
+        if args[0] == "goal":
+            self.goal(" ".join(args[1:]))
+            return
+
         arguments = docopt(__doc__, args, version="algodeploy 0.1.0")
         if arguments["create"]:
-            self.create()
+            self.create(
+                release=arguments["<release>"] or "stable",
+            )
         elif arguments["start"]:
             self.start()
         elif arguments["stop"]:
             self.stop()
         elif arguments["status"]:
             self.goal("node status")
-        elif arguments["goal"]:
-            self.goal(" ".join(args[1:]))
         elif arguments["reset"]:
             self.create()
 
@@ -121,12 +126,13 @@ class AlgoDeploy:
         print(f"Restored from {self.archive_tarball.name}")
         self.start()
 
-    def create(self):
-        # Stop algod and kmd if they are running to orphaned processes
+    def create(self, release):
+        # Stop algod and kmd if they are running to prevent orphaned processes
         self.stop(silent=True)
 
-        version_string = self.get_version()  # For example: v3.10.0-stable
+        version_string = self.get_version(release)  # For example: v3.10.0-stable
         version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
+        release_type = re.findall("-(.*)", version_string)[0]  # For example: stable
         system = platform.system().lower()
         machine = platform.machine().lower()
 
@@ -159,7 +165,7 @@ class AlgoDeploy:
             self.restore_archive()
             exit(0)
 
-        tarball = f"node_stable_{system}-{machine}_{version}.tar.gz"
+        tarball = f"node_{release_type}_{system}-{machine}_{version}.tar.gz"
         tarball_path = Path.joinpath(self.download_dir, tarball)
         url = f"https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}"
 
@@ -221,16 +227,16 @@ class AlgoDeploy:
             )
         print(f"Downloaded {url}")
 
-    def get_version(self):
+    def get_version(self, match):
         """
-        Get the latest stable release from github
+        Get the latest release from github that matches match
         """
         with yaspin(text="Getting latest node version"):
             releases = requests.get(
                 "https://api.github.com/repos/algorand/go-algorand/releases"
             ).json()
             for release in releases:
-                if "stable" in release["tag_name"]:
+                if match in release["tag_name"]:
                     return release["tag_name"]
 
     # https://stackoverflow.com/a/57970619
