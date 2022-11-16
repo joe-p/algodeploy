@@ -137,7 +137,7 @@ class AlgoDeploy:
         machine = platform.machine().lower()
 
         if machine == "x86_64":
-            machine = 'amd64'
+            machine = "amd64"
 
         archive_dir = Path.joinpath(self.algodeploy_dir, "archives")
         self.archive_tarball = Path.joinpath(
@@ -186,8 +186,8 @@ class AlgoDeploy:
                         exe_path = Path.joinpath(self.bin_dir, exe)
                         exe_path.unlink()
 
-        except:
-            print("Failed to download node software. Building from source...")
+        except Exception as e:
+            print(f"Failed to download {url}: {e}. Building from source...")
             self.build_from_source(version_string)
 
         template_path = Path.joinpath(self.download_dir, "template.json")
