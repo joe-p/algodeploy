@@ -132,7 +132,7 @@ class AlgoDeploy:
 
         version_string = self.get_version(release)  # For example: v3.10.0-stable
         version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
-        release_type = re.findall("-(.*)", version_string)[0]  # For example: stable
+        release_channel = re.findall("-(.*)", version_string)[0]  # For example: stable
         system = platform.system().lower()
         machine = platform.machine().lower()
 
@@ -168,9 +168,9 @@ class AlgoDeploy:
             self.restore_archive()
             exit(0)
 
-        tarball = f"node_{release_type}_{system}-{machine}_{version}.tar.gz"
+        tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
         tarball_path = Path.joinpath(self.download_dir, tarball)
-        url = f"https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}"
+        url = f"https://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
 
         # First attempt to download tarball, but fall back to building from source
         try:
