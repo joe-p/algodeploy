@@ -6,7 +6,6 @@ Usage:
   algodeploy start
   algodeploy stop
   algodeploy status
-  algodeploy reset
   algodeploy goal [<goal_args>...]
 
 Options:
@@ -90,8 +89,6 @@ class AlgoDeploy:
             self.stop()
         elif arguments["status"]:
             self.goal("node status")
-        elif arguments["reset"]:
-            self.create()
 
     def update_json(self, file, **kwargs):
         if Path.exists(file):
@@ -118,78 +115,20 @@ class AlgoDeploy:
             silent,
         )
 
-    def restore_archive(self):
-        with yaspin(text="Restoring archive"):
-            with tarfile.open(self.archive_tarball) as f:
-                f.extractall(path=self.localnet_dir)
+    def restore_archive(self, tarball, dir):
+        with yaspin(text=f"Restoring {tarball} to {dir}"):
+            with tarfile.open(tarball) as f:
+                f.extractall(dir)
 
-        print(f"Restored from {self.archive_tarball.name}")
-        self.start()
+    def create_tarball(self, tarball, dir):
+        with yaspin(text=f"Creating {tarball} from {dir}"):
+            with tarfile.open(
+                tarball,
+                "w:gz",
+            ) as tar:
+                tar.add(dir, arcname=".")
 
-    def create(self, release):
-        # Stop algod and kmd if they are running to prevent orphaned processes
-        self.stop(silent=True)
-
-        version_string = self.get_version(release)  # For example: v3.10.0-stable
-        version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
-        release_channel = re.findall("-(.*)", version_string)[0]  # For example: stable
-        system = platform.system().lower()
-        machine = platform.machine().lower()
-
-        if machine == "x86_64":
-            machine = "amd64"
-
-        archive_dir = Path.joinpath(self.algodeploy_dir, "archives")
-        self.archive_tarball = Path.joinpath(
-            Path.joinpath(self.algodeploy_dir, "archives"),
-            f"localnet-{system}-{machine}_{version}.tar.gz",
-        )
-
-        # remove previous localnet directory for a clean install
-        shutil.rmtree(path=self.localnet_dir, ignore_errors=True)
-
-        self.download_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
-        self.bin_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
-        archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
-
-        if self.archive_tarball.exists():
-            self.restore_archive()
-            exit(0)
-
-        try:
-            self.download_url(
-                f"https://algodeploy.joe-p.net/{self.archive_tarball.name}",
-                self.archive_tarball,
-            )
-        except:
-            pass
-
-        if self.archive_tarball.exists():
-            self.restore_archive()
-            exit(0)
-
-        tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
-        tarball_path = Path.joinpath(self.download_dir, tarball)
-        url = f"https://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
-
-        # First attempt to download tarball, but fall back to building from source
-        try:
-            self.download_url(url, tarball_path)
-            with yaspin(text="Extracting node software"):
-                with tarfile.open(tarball_path) as f:
-                    f.extractall(path=self.localnet_dir)
-                shutil.rmtree(Path.joinpath(self.localnet_dir, "data"))
-                shutil.rmtree(Path.joinpath(self.localnet_dir, "genesis"))
-                shutil.rmtree(Path.joinpath(self.localnet_dir, "test-utils"))
-                for exe in self.bin_dir.glob("*"):
-                    if exe.name not in ["algod", "goal", "kmd", "tealdbg"]:
-                        exe_path = Path.joinpath(self.bin_dir, exe)
-                        exe_path.unlink()
-
-        except Exception as e:
-            print(f"Failed to download {url}: {e}. Building from source...")
-            self.build_from_source(version_string)
-
+    def create_localnet(self):
         template_path = Path.joinpath(self.download_dir, "template.json")
         shutil.copyfile(
             Path.joinpath(Path(__file__).resolve().parent, "template.json"),
@@ -209,12 +148,90 @@ class AlgoDeploy:
 
             self.config()
 
-        with yaspin(text="Creating archive"):
-            with tarfile.open(
-                self.archive_tarball,
-                "w:gz",
-            ) as tar:
-                tar.add(self.localnet_dir, arcname=".")
+    def attempt_download(self, url, file):
+        try:
+            if not file.exists():
+                self.download_url(url, file)
+        except Exception as e:
+            if not "404" in str(e):
+                print(f"Download{url}: {e}")
+            pass
+
+    def download_release(self, url, tarball_path):
+        try:
+            self.download_url(url, tarball_path)
+        except Exception as e:
+            print(f"Error downloading {url}: {e}")
+            return False
+
+        with yaspin(text="Extracting node software"):
+            with tarfile.open(tarball_path) as f:
+                f.extractall(path=self.localnet_dir)
+            shutil.rmtree(Path.joinpath(self.localnet_dir, "data"))
+            shutil.rmtree(Path.joinpath(self.localnet_dir, "genesis"))
+            shutil.rmtree(Path.joinpath(self.localnet_dir, "test-utils"))
+            for exe in self.bin_dir.glob("*"):
+                if exe.name not in ["algod", "goal", "kmd"]:
+                    exe_path = Path.joinpath(self.bin_dir, exe)
+                    exe_path.unlink()
+        return True
+
+    def create(self, release):
+        # Stop algod and kmd if they are running to prevent orphaned processes
+        self.stop(silent=True)
+
+        version_string = self.get_version(release)  # For example: v3.10.0-stable
+        version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
+        release_channel = re.findall("-(.*)", version_string)[0]  # For example: stable
+        system = platform.system().lower()
+        machine = platform.machine().lower()
+
+        if machine == "x86_64":
+            machine = "amd64"
+
+        archive_dir = Path.joinpath(self.algodeploy_dir, "archives")
+        self.data_tarball = Path.joinpath(
+            Path.joinpath(self.algodeploy_dir, "archives"),
+            f"localnet-data_{version_string}.tar.gz",
+        )
+
+        self.bin_tarball = Path.joinpath(
+            Path.joinpath(self.algodeploy_dir, "archives"),
+            f"algodeploy_{system}-{machine}_{version_string}.tar.gz",
+        )
+
+        # remove previous localnet directory for a clean install
+        shutil.rmtree(path=self.localnet_dir, ignore_errors=True)
+
+        self.download_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        self.bin_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+
+        self.attempt_download(
+            f"https://algodeploy.joe-p.net/{self.data_tarball.name}",
+            self.data_tarball,
+        )
+        self.attempt_download(
+            f"https://algodeploy.joe-p.net/{self.bin_tarball.name}",
+            self.bin_tarball,
+        )
+
+        if self.bin_tarball.exists():
+            self.restore_archive(self.bin_tarball, self.bin_dir)
+        else:
+            tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
+            tarball_path = Path.joinpath(self.download_dir, tarball)
+            url = f"https://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
+
+            if not self.download_release(url, tarball_path):
+                self.build_from_source(version_string)
+            self.create_tarball(self.bin_tarball, self.bin_dir)
+
+        if self.data_tarball.exists():
+            self.restore_archive(self.data_tarball, self.data_dir)
+        else:
+            self.create_localnet()
+            self.create_tarball(self.data_tarball, self.data_dir)
 
         self.start()
 
@@ -228,7 +245,6 @@ class AlgoDeploy:
             urllib.request.urlretrieve(
                 url, filename=output_path, reporthook=t.update_to
             )
-        print(f"Downloaded {url}")
 
     def get_version(self, match):
         """
