@@ -221,10 +221,15 @@ class AlgoDeploy:
         else:
             tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
             tarball_path = Path.joinpath(self.download_dir, tarball)
-            url = f"https://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
+            aws_url = f"https://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
+            gh_url = f"https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}"
 
-            if not self.download_release(url, tarball_path):
+            if not (
+                self.download_release(aws_url, tarball_path)
+                or self.download_release(gh_url, tarball_path)
+            ):
                 self.build_from_source(version_string)
+
             self.create_tarball(self.bin_tarball, self.bin_dir)
 
         if self.data_tarball.exists():
