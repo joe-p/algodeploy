@@ -2,7 +2,7 @@
 """algodeploy
 
 Usage:
-  algodeploy create [<release>]
+  algodeploy create [--no-archive] [<release>]
   algodeploy start
   algodeploy stop
   algodeploy status
@@ -82,6 +82,7 @@ class AlgoDeploy:
         if arguments["create"]:
             self.create(
                 release=arguments["<release>"] or "stable",
+                no_archive=arguments["--no-archive"],
             )
         elif arguments["start"]:
             self.start()
@@ -176,7 +177,7 @@ class AlgoDeploy:
                     exe_path.unlink()
         return True
 
-    def create(self, release):
+    def create(self, release, no_archive):
         # Stop algod and kmd if they are running to prevent orphaned processes
         self.stop(silent=True)
 
@@ -230,12 +231,14 @@ class AlgoDeploy:
             ):
                 self.build_from_source(version_string)
 
-            self.create_tarball(self.bin_tarball, self.bin_dir)
+            if not no_archive:
+                self.create_tarball(self.bin_tarball, self.bin_dir)
 
         if self.data_tarball.exists():
             self.restore_archive(self.data_tarball, self.data_dir)
         else:
             self.create_localnet()
+        if not no_archive:
             self.create_tarball(self.data_tarball, self.data_dir)
 
         self.start()
