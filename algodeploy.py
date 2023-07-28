@@ -2,7 +2,7 @@
 """algodeploy
 
 Usage:
-  algodeploy create [--no-archive] [<release>]
+  algodeploy create [--force-download] [<release>]
   algodeploy catchup
   algodeploy start
   algodeploy stop
@@ -85,7 +85,7 @@ class AlgoDeploy:
         if arguments["create"]:
             self.create(
                 release=arguments["<release>"] or "stable",
-                no_archive=arguments["--no-archive"],
+                force_download=arguments["--force-download"],
             )
         elif arguments["start"]:
             self.start()
@@ -162,7 +162,7 @@ class AlgoDeploy:
         self.goal(f'node catchup {catchpoint}')
 
 
-    def create(self, release, no_archive):
+    def create(self, release, force_download):
         # Stop algod and kmd if they are running to prevent orphaned processes
         self.stop()
 
@@ -192,7 +192,7 @@ class AlgoDeploy:
 
         archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-        if self.tarball.exists():
+        if not force_download and self.tarball.exists():
             self.restore_archive(self.tarball, self.algodeploy_dir)
         else:
             tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
@@ -208,8 +208,8 @@ class AlgoDeploy:
 
             with yaspin(text="Performing initial node configuration"):
                 self.config()
-            if not no_archive:
-                self.create_tarball(self.tarball, {"bin": self.bin_dir, "data": self.data_dir})
+
+            self.create_tarball(self.tarball, {"bin": self.bin_dir, "data": self.data_dir})
 
 
         with yaspin(text="Waiting for node to start"):
