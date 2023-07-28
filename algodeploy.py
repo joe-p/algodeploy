@@ -3,6 +3,7 @@
 
 Usage:
   algodeploy create [--no-archive] [<release>]
+  algodeploy catchup
   algodeploy start
   algodeploy stop
   algodeploy status
@@ -25,6 +26,10 @@ import subprocess
 import sys
 import json
 from yaspin import yaspin
+import time
+
+DEFAULT_ALGOD_PORT = 8888
+DEFAULT_KMD_PORT = 9999
 
 # https://stackoverflow.com/a/53877507
 class DownloadProgressBar(tqdm):
@@ -39,34 +44,32 @@ class AlgoDeploy:
         self.home_dir = Path.home()
         self.algodeploy_dir = Path.joinpath(self.home_dir, ".algodeploy")
         self.download_dir = Path.joinpath(self.algodeploy_dir, "downloads")
-        self.localnet_dir = Path.joinpath(self.algodeploy_dir, "localnet")
-        self.data_dir = Path.joinpath(self.localnet_dir, "data", "Node")
-        self.bin_dir = Path.joinpath(self.localnet_dir, "bin")
+        self.data_dir = Path.joinpath(self.algodeploy_dir, "data")
+        self.bin_dir = Path.joinpath(self.algodeploy_dir, "bin")
         self.msys_dir = Path.joinpath(self.home_dir, "msys64")
 
     def config(self):
+        self.start()
         kmd_dir = list(self.data_dir.glob("kmd-*"))[0]
         kmd_config = Path.joinpath(kmd_dir, "kmd_config.json")
-        self.update_json(kmd_config, address="0.0.0.0:4002", allowed_origins=["*"])
+        self.update_json(kmd_config, address=f"0.0.0.0:{DEFAULT_KMD_PORT}", allowed_origins=["*"])
 
         algod_config = Path.joinpath(self.data_dir, "config.json")
         self.update_json(
             algod_config,
-            EndpointAddress="0.0.0.0:4001",
+            EndpointAddress=f"0.0.0.0:{DEFAULT_ALGOD_PORT}",
             EnableDeveloperAPI=True,
-            Archival=False,
-            IsIndexerActive=False,
         )
+        
+        self.stop()
 
-        token = "a" * 64
-        with open(Path.joinpath(kmd_dir, "kmd.token"), "w") as f:
-            f.write(token)
-        with open(Path.joinpath(self.data_dir, "algod.token"), "w") as f:
-            f.write(token)
-
-    def stop(self, silent=False):
-        self.goal("node stop", exit_on_error=False, silent=silent)
-        self.goal("kmd stop", exit_on_error=False, silent=silent)
+        self.goal("node generatetoken")
+        shutil.move(Path.joinpath(self.data_dir, "algod.token"), Path.joinpath(kmd_dir, "kmd.token"), )
+        self.goal("node generatetoken")
+        
+    def stop(self):
+        self.goal("node stop", exit_on_error=False)
+        self.goal("kmd stop", exit_on_error=False)
 
     def start(self):
         self.goal("node start")
@@ -75,7 +78,7 @@ class AlgoDeploy:
     def parse_args(self, args=sys.argv[1:]):
         # Handle goal seperately to avoid conflicts with docopt on --help and --version
         if args[0] == "goal":
-            self.goal(" ".join(args[1:]))
+            self.goal(" ".join(args[1:]), silent=False)
             return
 
         arguments = docopt(__doc__, args, version="algodeploy 0.1.0")
@@ -90,6 +93,8 @@ class AlgoDeploy:
             self.stop()
         elif arguments["status"]:
             self.goal("node status")
+        elif arguments["catchup"]:
+            self.catchup()
 
     def update_json(self, file, **kwargs):
         if Path.exists(file):
@@ -104,7 +109,7 @@ class AlgoDeploy:
                 json.dump(kwargs, f, indent=4)
                 f.truncate()
 
-    def goal(self, args, exit_on_error=True, silent=False):
+    def goal(self, args, exit_on_error=True, silent=True):
         goal_path = Path.joinpath(self.bin_dir, "goal")
 
         if platform.system() == "Windows":
@@ -113,7 +118,7 @@ class AlgoDeploy:
         self.cmd(
             f"{goal_path} -d {self.data_dir} {args}",
             exit_on_error,
-            silent,
+            silent=silent
         )
 
     def restore_archive(self, tarball, dir):
@@ -121,42 +126,14 @@ class AlgoDeploy:
             with tarfile.open(tarball) as f:
                 f.extractall(dir)
 
-    def create_tarball(self, tarball, dir):
-        with yaspin(text=f"Creating {tarball} from {dir}"):
+    def create_tarball(self, tarball, dir_dict: dict[str, Path]):
+        with yaspin(text=f"Creating {tarball}"):
             with tarfile.open(
                 tarball,
                 "w:gz",
             ) as tar:
-                tar.add(dir, arcname=".")
-
-    def create_localnet(self):
-        template_path = Path.joinpath(self.download_dir, "template.json")
-        shutil.copyfile(
-            Path.joinpath(Path(__file__).resolve().parent, "template.json"),
-            template_path,
-        )
-
-        self.goal(
-            f'network create --network localnet --template {template_path} --rootdir {Path.joinpath(self.localnet_dir, "data")}'
-        )
-
-        with yaspin(text="Configuring localnet"):
-            # Temporarily start algod and kmd to generate directories and config files
-            self.goal("node start", silent=True)
-            self.goal("kmd start -t 0", silent=True)
-            self.goal("node stop", silent=True)
-            self.goal("kmd stop", silent=True)
-
-            self.config()
-
-    def attempt_download(self, url, file):
-        try:
-            if not file.exists():
-                self.download_url(url, file)
-        except Exception as e:
-            if not "404" in str(e):
-                print(f"Download{url}: {e}")
-            pass
+                for name in dir_dict:
+                    tar.add(dir_dict[name], arcname=name)
 
     def download_release(self, url, tarball_path):
         try:
@@ -167,19 +144,27 @@ class AlgoDeploy:
 
         with yaspin(text="Extracting node software"):
             with tarfile.open(tarball_path) as f:
-                f.extractall(path=self.localnet_dir)
-            shutil.rmtree(Path.joinpath(self.localnet_dir, "data"))
-            shutil.rmtree(Path.joinpath(self.localnet_dir, "genesis"))
-            shutil.rmtree(Path.joinpath(self.localnet_dir, "test-utils"))
+                f.extractall(path=self.algodeploy_dir)
+            shutil.move(Path.joinpath(self.data_dir,"config.json.example"), Path.joinpath(self.data_dir,"config.json"))
+            shutil.move(Path.joinpath(self.algodeploy_dir, "genesis", "genesis.json"), Path.joinpath(self.data_dir,"genesis.json"))
+            shutil.rmtree(Path.joinpath(self.algodeploy_dir, "genesis"))
+            shutil.rmtree(Path.joinpath(self.algodeploy_dir, "test-utils"))
+
+
             for exe in self.bin_dir.glob("*"):
                 if exe.name not in ["algod", "goal", "kmd"]:
                     exe_path = Path.joinpath(self.bin_dir, exe)
                     exe_path.unlink()
         return True
+    
+    def catchup(self):
+        catchpoint = requests.get("https://algorand-catchpoints.s3.us-east-2.amazonaws.com/channel/mainnet/latest.catchpoint").text
+        self.goal(f'node catchup {catchpoint}')
+
 
     def create(self, release, no_archive):
         # Stop algod and kmd if they are running to prevent orphaned processes
-        self.stop(silent=True)
+        self.stop()
 
         version_string = self.get_version(release)  # For example: v3.10.0-stable
         version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
@@ -191,34 +176,24 @@ class AlgoDeploy:
             machine = "amd64"
 
         archive_dir = Path.joinpath(self.algodeploy_dir, "archives")
-        self.data_tarball = Path.joinpath(
-            Path.joinpath(self.algodeploy_dir, "archives"),
-            f"localnet-data_{version_string}.tar.gz",
-        )
 
-        self.bin_tarball = Path.joinpath(
+        self.tarball = Path.joinpath(
             Path.joinpath(self.algodeploy_dir, "archives"),
             f"algodeploy_{system}-{machine}_{version_string}.tar.gz",
         )
 
-        # remove previous localnet directory for a clean install
-        shutil.rmtree(path=self.localnet_dir, ignore_errors=True)
+        # remove previous directory for a clean install
+        shutil.rmtree(path=self.data_dir, ignore_errors=True)
+        shutil.rmtree(path=self.bin_dir, ignore_errors=True)
 
         self.download_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
         self.bin_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+        self.data_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+
         archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-        self.attempt_download(
-            f"https://algodeploy.joe-p.net/{self.data_tarball.name}",
-            self.data_tarball,
-        )
-        self.attempt_download(
-            f"https://algodeploy.joe-p.net/{self.bin_tarball.name}",
-            self.bin_tarball,
-        )
-
-        if self.bin_tarball.exists():
-            self.restore_archive(self.bin_tarball, self.bin_dir)
+        if self.tarball.exists():
+            self.restore_archive(self.tarball, self.algodeploy_dir)
         else:
             tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
             tarball_path = Path.joinpath(self.download_dir, tarball)
@@ -231,17 +206,37 @@ class AlgoDeploy:
             ):
                 self.build_from_source(version_string)
 
+            with yaspin(text="Performing initial node configuration"):
+                self.config()
             if not no_archive:
-                self.create_tarball(self.bin_tarball, self.bin_dir)
+                self.create_tarball(self.tarball, {"bin": self.bin_dir, "data": self.data_dir})
 
-        if self.data_tarball.exists():
-            self.restore_archive(self.data_tarball, self.data_dir)
-        else:
-            self.create_localnet()
-        if not no_archive:
-            self.create_tarball(self.data_tarball, self.data_dir)
 
-        self.start()
+        with yaspin(text="Waiting for node to start"):
+            self.start()
+
+            token = Path.joinpath(self.data_dir, 'algod.token').read_text()
+            previous_last_round = 0
+
+            # Sometimes when starting a node for the first time it freezes for a couple of seconds before you can actually start a catchup
+            # This loop will wait until the node actually starts syncing before running "goal node catchup"
+            while True:
+                response = requests.get(f"http://localhost:{DEFAULT_ALGOD_PORT}/v2/status", headers={"X-Algo-API-Token": token})
+                if response.status_code != 200:
+                    raise ConnectionError(f'HTTP {response.status_code}: {response.text}')
+            
+                last_round = response.json()['last-round']
+
+                # somtimes the node stays stuck at a low initial round for a while, so we only break out of the loop if the round has increased
+                if previous_last_round != 0 and last_round > previous_last_round:
+                    break
+
+                previous_last_round = last_round
+                time.sleep(0.5)
+
+
+        self.catchup()
+        print('Now catching up to network. Use "algodeploy status" to check progress')
 
     def download_url(self, url, output_path):
         """
