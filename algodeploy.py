@@ -9,6 +9,7 @@ Usage:
   algodeploy stop
   algodeploy status
   algodeploy goal [<goal_args>...]
+  algodeploy dashboard
 
 Options:
   -h --help     Show this screen.
@@ -24,6 +25,7 @@ import tarfile
 import time
 import urllib.request
 from pathlib import Path
+import psutil
 
 import requests
 from docopt import docopt
@@ -112,6 +114,8 @@ class AlgoDeploy:
                 release=arguments["<release>"] or "stable",
                 force_download=arguments["--force-download"],
             )
+        elif arguments["dashboard"]:
+            self.dashboard()
 
     def update_json(self, file: Path, **kwargs: dict[str, str]) -> None:
         if Path.exists(file):
@@ -529,6 +533,77 @@ class AlgoDeploy:
                 Path.joinpath(self.bin_dir, bin_path.name),
             )
 
+    def dashboard(self) -> None:
+        alloctrl_dir = Path.joinpath(self.algodeploy_dir, "alloctrl-main")
+        pid_file = Path.joinpath(alloctrl_dir, "pid")
+
+        if alloctrl_dir.exists():
+            if pid_file.exists():
+                try:
+                    psutil.Process(int(pid_file.read_text())).terminate()
+                except psutil.NoSuchProcess:
+                    pass
+
+            shutil.rmtree(alloctrl_dir)
+
+        tarball_path = Path.joinpath(self.download_dir, "alloctrl.tar.gz")
+        self.download_url(
+            "https://github.com/AlgoNode/alloctrl/archive/main.tar.gz",
+            tarball_path,
+        )
+
+        self.extract_archive(tarball_path, self.algodeploy_dir)
+        algod_port = Path.joinpath(
+            self.data_dir, "algod.net"
+        ).read_text().strip().split(":")[-1]
+
+        admin_token = Path.joinpath(
+            self.data_dir, "algod.admin.token"
+        ).read_text().strip()
+
+        with yaspin(text="Setting up allowctrl") as y:
+            env = f"""PUBLIC_ALGOD_HOST=127.0.0.1
+            PUBLIC_ALGOD_PORT={algod_port}
+            SECRET_ALGOD_ADMIN_TOKEN={admin_token}
+            PUBLIC_CHECK_VERSION_ON_GITHUB=true
+            PUBLIC_ALLOW_EXTERNAL_APIS=true"""
+
+            Path.joinpath(alloctrl_dir, ".env").write_text(env)
+
+            self.cmd(f"cd {alloctrl_dir} && npm install && npm run build", silent=True)
+            y.text = "alloctrl setup complete"
+            y.ok("✓")
+
+        with yaspin(text="Starting alloctrl") as y:
+            process = subprocess.Popen(
+                "npm run start",
+                cwd=alloctrl_dir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                shell=True,
+                encoding="utf-8",
+                errors="replace",
+            )
+
+            port = 0
+            while True:
+                realtime_output = process.stdout.readline()
+
+                if realtime_output == "" and process.poll() is not None:
+                    break
+
+                if "Listening " in realtime_output:
+                    port = realtime_output.split(":")[-1].strip()
+                    break
+
+            ps_process = psutil.Process(process.pid)
+
+            pid = ps_process.children()[0].pid
+
+            pid_file.write_text(str(pid))
+
+            y.text = "Dashboard started at http://localhost:" + port
+            y.ok("✓")
 
 if __name__ == "__main__":
     ad = AlgoDeploy()
