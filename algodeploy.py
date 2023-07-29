@@ -85,12 +85,12 @@ class AlgoDeploy:
         self.goal("node generatetoken")
 
     def stop(self):
-        self.goal("node stop", exit_on_error=False, silent=False)
-        self.goal("kmd stop", exit_on_error=False, silent=False)
+        self.goal("node stop", exit_on_error=False)
+        self.goal("kmd stop", exit_on_error=False)
 
     def start(self):
-        self.goal("node start", silent=False)
-        self.goal("kmd start -t 0", silent=False)
+        self.goal("node start")
+        self.goal("kmd start -t 0")
 
     def parse_args(self, args=sys.argv[1:]):
         # Handle goal seperately to avoid conflicts with docopt on --help and --version
@@ -189,6 +189,8 @@ class AlgoDeploy:
         if base_dir:
             self.base_dir = Path(base_dir).resolve()
             self.update_json(self.config_file, base_dir=self.base_dir.__str__())
+            self.data_dir = Path.joinpath(self.base_dir, "data")
+            self.bin_dir = Path.joinpath(self.base_dir, "bin")
 
         version_string = self.get_version(release)  # For example: v3.10.0-stable
         version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
