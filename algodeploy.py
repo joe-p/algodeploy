@@ -31,6 +31,7 @@ import time
 DEFAULT_ALGOD_PORT = 8888
 DEFAULT_KMD_PORT = 9999
 
+
 # https://stackoverflow.com/a/53877507
 class DownloadProgressBar(tqdm):
     def update_to(self, b=1, bsize=1, tsize=None):
@@ -52,7 +53,9 @@ class AlgoDeploy:
         self.start()
         kmd_dir = list(self.data_dir.glob("kmd-*"))[0]
         kmd_config = Path.joinpath(kmd_dir, "kmd_config.json")
-        self.update_json(kmd_config, address=f"0.0.0.0:{DEFAULT_KMD_PORT}", allowed_origins=["*"])
+        self.update_json(
+            kmd_config, address=f"0.0.0.0:{DEFAULT_KMD_PORT}", allowed_origins=["*"]
+        )
 
         algod_config = Path.joinpath(self.data_dir, "config.json")
         self.update_json(
@@ -60,13 +63,16 @@ class AlgoDeploy:
             EndpointAddress=f"0.0.0.0:{DEFAULT_ALGOD_PORT}",
             EnableDeveloperAPI=True,
         )
-        
+
         self.stop()
 
         self.goal("node generatetoken")
-        shutil.move(Path.joinpath(self.data_dir, "algod.token"), Path.joinpath(kmd_dir, "kmd.token"), )
+        shutil.move(
+            Path.joinpath(self.data_dir, "algod.token"),
+            Path.joinpath(kmd_dir, "kmd.token"),
+        )
         self.goal("node generatetoken")
-        
+
     def stop(self):
         self.goal("node stop", exit_on_error=False)
         self.goal("kmd stop", exit_on_error=False)
@@ -115,11 +121,7 @@ class AlgoDeploy:
         if platform.system() == "Windows":
             goal_path = Path.joinpath(self.bin_dir, "goal.exe")
 
-        self.cmd(
-            f"{goal_path} -d {self.data_dir} {args}",
-            exit_on_error,
-            silent=silent
-        )
+        self.cmd(f"{goal_path} -d {self.data_dir} {args}", exit_on_error, silent=silent)
 
     def restore_archive(self, tarball, dir):
         with yaspin(text=f"Restoring {tarball} to {dir}"):
@@ -145,22 +147,28 @@ class AlgoDeploy:
         with yaspin(text="Extracting node software"):
             with tarfile.open(tarball_path) as f:
                 f.extractall(path=self.algodeploy_dir)
-            shutil.move(Path.joinpath(self.data_dir,"config.json.example"), Path.joinpath(self.data_dir,"config.json"))
-            shutil.move(Path.joinpath(self.algodeploy_dir, "genesis", "genesis.json"), Path.joinpath(self.data_dir,"genesis.json"))
+            shutil.move(
+                Path.joinpath(self.data_dir, "config.json.example"),
+                Path.joinpath(self.data_dir, "config.json"),
+            )
+            shutil.move(
+                Path.joinpath(self.algodeploy_dir, "genesis", "genesis.json"),
+                Path.joinpath(self.data_dir, "genesis.json"),
+            )
             shutil.rmtree(Path.joinpath(self.algodeploy_dir, "genesis"))
             shutil.rmtree(Path.joinpath(self.algodeploy_dir, "test-utils"))
-
 
             for exe in self.bin_dir.glob("*"):
                 if exe.name not in ["algod", "goal", "kmd"]:
                     exe_path = Path.joinpath(self.bin_dir, exe)
                     exe_path.unlink()
         return True
-    
-    def catchup(self):
-        catchpoint = requests.get("https://algorand-catchpoints.s3.us-east-2.amazonaws.com/channel/mainnet/latest.catchpoint").text
-        self.goal(f'node catchup {catchpoint}')
 
+    def catchup(self):
+        catchpoint = requests.get(
+            "https://algorand-catchpoints.s3.us-east-2.amazonaws.com/channel/mainnet/latest.catchpoint"
+        ).text
+        self.goal(f"node catchup {catchpoint}")
 
     def create(self, release, force_download):
         # Stop algod and kmd if they are running to prevent orphaned processes
@@ -209,23 +217,29 @@ class AlgoDeploy:
             with yaspin(text="Performing initial node configuration"):
                 self.config()
 
-            self.create_tarball(self.tarball, {"bin": self.bin_dir, "data": self.data_dir})
-
+            self.create_tarball(
+                self.tarball, {"bin": self.bin_dir, "data": self.data_dir}
+            )
 
         with yaspin(text="Waiting for node to start"):
             self.start()
 
-            token = Path.joinpath(self.data_dir, 'algod.token').read_text()
+            token = Path.joinpath(self.data_dir, "algod.token").read_text()
             previous_last_round = 0
 
             # Sometimes when starting a node for the first time it freezes for a couple of seconds before you can actually start a catchup
             # This loop will wait until the node actually starts syncing before running "goal node catchup"
             while True:
-                response = requests.get(f"http://localhost:{DEFAULT_ALGOD_PORT}/v2/status", headers={"X-Algo-API-Token": token})
+                response = requests.get(
+                    f"http://localhost:{DEFAULT_ALGOD_PORT}/v2/status",
+                    headers={"X-Algo-API-Token": token},
+                )
                 if response.status_code != 200:
-                    raise ConnectionError(f'HTTP {response.status_code}: {response.text}')
-            
-                last_round = response.json()['last-round']
+                    raise ConnectionError(
+                        f"HTTP {response.status_code}: {response.text}"
+                    )
+
+                last_round = response.json()["last-round"]
 
                 # somtimes the node stays stuck at a low initial round for a while, so we only break out of the loop if the round has increased
                 if previous_last_round != 0 and last_round > previous_last_round:
@@ -233,7 +247,6 @@ class AlgoDeploy:
 
                 previous_last_round = last_round
                 time.sleep(0.5)
-
 
         self.catchup()
         print('Now catching up to network. Use "algodeploy status" to check progress')
