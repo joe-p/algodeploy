@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""algodeploy
+"""algorun
 
 Usage:
-  algodeploy create [--base-dir=PATH] [--force-download] [<release>]
-  algodeploy update [--force-download] [<release>]
-  algodeploy catchup
-  algodeploy start
-  algodeploy stop
-  algodeploy status
-  algodeploy goal [<goal_args>...]
-  algodeploy dashboard
+  algorun create [--base-dir=PATH] [--force-download] [<release>]
+  algorun update [--force-download] [<release>]
+  algorun catchup
+  algorun start
+  algorun stop
+  algorun status
+  algorun goal [<goal_args>...]
+  algorun dashboard
 
 Options:
   -h --help     Show this screen.
@@ -41,15 +41,15 @@ class DownloadProgressBar(tqdm):
         self.update(b * bsize - self.n)
 
 
-class AlgoDeploy:
+class algorun:
     def __init__(self) -> None:
         self.home_dir = Path.home()
-        self.algodeploy_dir = Path.joinpath(self.home_dir, ".algodeploy")
-        self.tmp_dir = Path.joinpath(self.algodeploy_dir, "tmp")
-        self.download_dir = Path.joinpath(self.algodeploy_dir, "downloads")
+        self.algorun_dir = Path.joinpath(self.home_dir, ".algorun")
+        self.tmp_dir = Path.joinpath(self.algorun_dir, "tmp")
+        self.download_dir = Path.joinpath(self.algorun_dir, "downloads")
         self.msys_dir = Path.joinpath(self.home_dir, "msys64")
 
-        self.config_file = Path.joinpath(self.algodeploy_dir, "config.json")
+        self.config_file = Path.joinpath(self.algorun_dir, "config.json")
 
         if (self.config_file).exists():
             config = json.loads(self.config_file.read_text())
@@ -57,7 +57,7 @@ class AlgoDeploy:
                 self.base_dir = Path(config["base_dir"])
 
         if not hasattr(self, "base_dir"):
-            self.base_dir = Path.joinpath(self.algodeploy_dir)
+            self.base_dir = Path.joinpath(self.algorun_dir)
 
         self.bin_dir = Path.joinpath(self.base_dir, "bin")
         self.data_dir = Path.joinpath(self.base_dir, "data")
@@ -94,7 +94,7 @@ class AlgoDeploy:
             self.goal(" ".join(args[1:]), silent=False)
             return
 
-        arguments = docopt(__doc__, args, version="algodeploy 0.1.0")
+        arguments = docopt(__doc__, args, version="algorun 0.1.0")
         if arguments["create"]:
             self.create(
                 release=arguments["<release>"] or "stable",
@@ -178,15 +178,15 @@ class AlgoDeploy:
         if machine == "x86_64":
             machine = "amd64"
 
-        algodeploy_tarball = Path.joinpath(
-            Path.joinpath(self.algodeploy_dir, "archives"),
-            f"algodeploy_{system}-{machine}_{version_string}.tar.gz",
+        algorun_tarball = Path.joinpath(
+            Path.joinpath(self.algorun_dir, "archives"),
+            f"algorun_{system}-{machine}_{version_string}.tar.gz",
         )
 
         self.stop()
 
-        if not force_download and algodeploy_tarball.exists():
-            self.extract_archive(algodeploy_tarball, self.tmp_dir)
+        if not force_download and algorun_tarball.exists():
+            self.extract_archive(algorun_tarball, self.tmp_dir)
             shutil.rmtree(self.bin_dir)
             shutil.move(Path.joinpath(self.tmp_dir, "bin"), self.base_dir)
             for exe in self.bin_dir.glob("*"):
@@ -228,11 +228,11 @@ class AlgoDeploy:
         if machine == "x86_64":
             machine = "amd64"
 
-        archive_dir = Path.joinpath(self.algodeploy_dir, "archives")
+        archive_dir = Path.joinpath(self.algorun_dir, "archives")
 
-        algodeploy_tarball = Path.joinpath(
-            Path.joinpath(self.algodeploy_dir, "archives"),
-            f"algodeploy_{system}-{machine}_{version_string}.tar.gz",
+        algorun_tarball = Path.joinpath(
+            Path.joinpath(self.algorun_dir, "archives"),
+            f"algorun_{system}-{machine}_{version_string}.tar.gz",
         )
 
         # remove previous directory for a clean install
@@ -245,8 +245,8 @@ class AlgoDeploy:
 
         archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-        if not force_download and algodeploy_tarball.exists():
-            self.extract_archive(algodeploy_tarball, self.base_dir)
+        if not force_download and algorun_tarball.exists():
+            self.extract_archive(algorun_tarball, self.base_dir)
         else:
             tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
             tarball_path = Path.joinpath(self.download_dir, tarball)
@@ -295,7 +295,7 @@ class AlgoDeploy:
                 y.ok("✓")
 
             self.create_tarball(
-                algodeploy_tarball, {"bin": self.bin_dir, "data": self.data_dir}
+                algorun_tarball, {"bin": self.bin_dir, "data": self.data_dir}
             )
 
         with yaspin(text="Waiting for node to start") as y:
@@ -353,7 +353,7 @@ class AlgoDeploy:
             y.ok("✓")
 
         self.catchup()
-        print('Now catching up to network. Use "algodeploy status" to check progress')
+        print('Now catching up to network. Use "algorun status" to check progress')
 
     def download_url(self, url: str, output_path: Path) -> None:
         """
@@ -534,7 +534,7 @@ class AlgoDeploy:
             )
 
     def dashboard(self) -> None:
-        alloctrl_dir = Path.joinpath(self.algodeploy_dir, "alloctrl-main")
+        alloctrl_dir = Path.joinpath(self.algorun_dir, "alloctrl-main")
         pid_file = Path.joinpath(alloctrl_dir, "pid")
 
         if alloctrl_dir.exists():
@@ -552,7 +552,7 @@ class AlgoDeploy:
             tarball_path,
         )
 
-        self.extract_archive(tarball_path, self.algodeploy_dir)
+        self.extract_archive(tarball_path, self.algorun_dir)
         algod_port = Path.joinpath(
             self.data_dir, "algod.net"
         ).read_text().strip().split(":")[-1]
@@ -606,5 +606,5 @@ class AlgoDeploy:
             y.ok("✓")
 
 if __name__ == "__main__":
-    ad = AlgoDeploy()
+    ad = algorun()
     ad.parse_args()
