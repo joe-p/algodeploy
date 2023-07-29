@@ -30,9 +30,6 @@ from docopt import docopt
 from tqdm import tqdm
 from yaspin import yaspin
 
-DEFAULT_ALGOD_PORT = 8888
-DEFAULT_KMD_PORT = 9999
-
 
 # https://stackoverflow.com/a/53877507
 class DownloadProgressBar(tqdm):
@@ -54,7 +51,7 @@ class AlgoDeploy:
 
         if (self.config_file).exists():
             config = json.loads(self.config_file.read_text())
-            if config["base_dir"]:
+            if "base_dir" in config.keys():
                 self.base_dir = Path(config["base_dir"])
 
         if not hasattr(self, "base_dir"):
@@ -67,16 +64,10 @@ class AlgoDeploy:
         self.start()
         kmd_dir = next(iter(self.data_dir.glob("kmd-*")))
         kmd_config = Path.joinpath(kmd_dir, "kmd_config.json")
-        self.update_json(
-            kmd_config, address=f"0.0.0.0:{DEFAULT_KMD_PORT}", allowed_origins=["*"]
-        )
+        self.update_json(kmd_config, address="0.0.0.0:0", allowed_origins=["*"])
 
         algod_config = Path.joinpath(self.data_dir, "config.json")
-        self.update_json(
-            algod_config,
-            EndpointAddress=f"0.0.0.0:{DEFAULT_ALGOD_PORT}",
-            EnableDeveloperAPI=True,
-        )
+        self.update_json(algod_config, EndpointAddress="0.0.0.0:0")
 
         self.stop()
 
@@ -307,6 +298,26 @@ class AlgoDeploy:
             self.start()
 
             token = Path.joinpath(self.data_dir, "algod.token").read_text()
+            algod_port = int(Path.joinpath(
+                self.data_dir, "algod.net"
+            ).read_text().strip().split(":")[-1])
+
+            kmd_dir = next(iter(self.data_dir.glob("kmd-*")))
+            kmd_port = int(Path.joinpath(
+                kmd_dir, "kmd.net"
+            ).read_text().strip().split(":")[-1])
+
+            kmd_config = Path.joinpath(kmd_dir, "kmd_config.json")
+            self.update_json(
+                kmd_config, address=f"0.0.0.0:{kmd_port}", allowed_origins=["*"]
+            )
+
+            algod_config = Path.joinpath(self.data_dir, "config.json")
+            self.update_json(
+                algod_config,
+                EndpointAddress=f"0.0.0.0:{algod_port}",
+            )
+
             previous_last_round = 0
 
             # Sometimes when starting a node for the first time it freezes for a couple
@@ -316,7 +327,7 @@ class AlgoDeploy:
             # "goal node catchup"
             while True:
                 response = requests.get(
-                    f"http://localhost:{DEFAULT_ALGOD_PORT}/v2/status",
+                    f"http://localhost:{algod_port}/v2/status",
                     headers={"X-Algo-API-Token": token},
                 )
                 if response.status_code != 200:
