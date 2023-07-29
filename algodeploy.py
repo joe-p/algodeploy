@@ -150,18 +150,22 @@ class AlgoDeploy:
         )
 
     def extract_archive(self, tarball: Path, target: Path) -> None:
-        with yaspin(text=f"Extracting {tarball} to {target}"):
+        with yaspin(text=f"Extracting {tarball} to {target}") as y:
             with tarfile.open(tarball) as f:
                 f.extractall(target)
+            y.text = f"Extracted {tarball} to {target}"
+            y.ok("✓")
 
     def create_tarball(self, tarball: Path, dir_dict: dict[str, Path]) -> None:
-        with yaspin(text=f"Creating {tarball}"):
+        with yaspin(text=f"Creating {tarball}") as y:
             with tarfile.open(
                 tarball,
                 "w:gz",
             ) as tar:
                 for name in dir_dict:
                     tar.add(dir_dict[name], arcname=name)
+            y.text = f"Created {tarball}"
+            y.ok("✓")
 
     def catchup(self) -> None:
         catchpoint = requests.get(
@@ -263,7 +267,7 @@ class AlgoDeploy:
                 download_error = e
 
             if not download_error:
-                with yaspin(text="Extracting node software"):
+                with yaspin(text=f"Extracting node software to {self.base_dir}") as y:
                     with tarfile.open(tarball_path) as f:
                         f.extractall(path=self.tmp_dir)
 
@@ -287,14 +291,19 @@ class AlgoDeploy:
                     shutil.rmtree(self.bin_dir)
                     shutil.move(tmp_bin, self.base_dir)
 
+                    y.text = f"Extracted node software to {self.base_dir}"
+                    y.ok("✓")
+
             with yaspin(text="Performing initial node configuration"):
                 self.config()
+                y.text = "Initial node configuration complete"
+                y.ok("✓")
 
             self.create_tarball(
                 algodeploy_tarball, {"bin": self.bin_dir, "data": self.data_dir}
             )
 
-        with yaspin(text="Waiting for node to start"):
+        with yaspin(text="Waiting for node to start") as y:
             self.start()
 
             token = Path.joinpath(self.data_dir, "algod.token").read_text()
@@ -325,6 +334,9 @@ class AlgoDeploy:
                 previous_last_round = last_round
                 time.sleep(0.5)
 
+            y.text = "Node started"
+            y.ok("✓")
+
         self.catchup()
         print('Now catching up to network. Use "algodeploy status" to check progress')
 
@@ -343,12 +355,14 @@ class AlgoDeploy:
         """
         Get the latest release from github that matches match
         """
-        with yaspin(text="Getting latest node version"):
+        with yaspin(text=f"Getting latest node version matching '{match}'") as y:
             releases = requests.get(
                 "https://api.github.com/repos/algorand/go-algorand/releases"
             ).json()
             for release in releases:
                 if match in release["tag_name"]:
+                    y.text = f"Latest node version matching '{match}' is {release['tag_name']}"
+                    y.ok("✓")
                     return release["tag_name"]
 
     # https://stackoverflow.com/a/57970619
