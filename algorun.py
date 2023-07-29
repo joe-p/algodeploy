@@ -561,7 +561,7 @@ class algorun:
             self.data_dir, "algod.admin.token"
         ).read_text().strip()
 
-        with yaspin(text="Setting up allowctrl") as y:
+        with yaspin(text="Setting up alloctrl") as y:
             env = f"""PUBLIC_ALGOD_HOST=127.0.0.1
             PUBLIC_ALGOD_PORT={algod_port}
             SECRET_ALGOD_ADMIN_TOKEN={admin_token}
