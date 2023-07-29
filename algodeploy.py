@@ -113,7 +113,7 @@ class AlgoDeploy:
         elif arguments["stop"]:
             self.stop(silent=False)
         elif arguments["status"]:
-            self.goal("node status", silent=False)
+            self.goal("node status -w 1000", silent=False)
         elif arguments["catchup"]:
             self.catchup()
         elif arguments["update"]:
@@ -143,7 +143,11 @@ class AlgoDeploy:
         if platform.system() == "Windows":
             goal_path = Path.joinpath(self.bin_dir, "goal.exe")
 
-        self.cmd(f"{goal_path} -d {self.data_dir} {args}", exit_on_error, silent=silent)
+        self.cmd(
+            f"{goal_path} -d {self.data_dir} {args}",
+            exit_on_error=exit_on_error,
+            silent=silent,
+        )
 
     def extract_archive(self, tarball: Path, target: Path) -> None:
         with yaspin(text=f"Extracting {tarball} to {target}"):
@@ -249,6 +253,7 @@ class AlgoDeploy:
             tarball_path = Path.joinpath(self.download_dir, tarball)
             aws_url = f"https://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
 
+            download_error = None
             try:
                 self.download_url(aws_url, tarball_path)
 
@@ -258,18 +263,18 @@ class AlgoDeploy:
                 download_error = e
 
             if not download_error:
-                with yaspin(text="Extracting node software"):
+                with yaspin(text="Extracting node software") as y:
                     with tarfile.open(tarball_path) as f:
                         f.extractall(path=self.tmp_dir)
 
                     tmp_data = Path.joinpath(self.tmp_dir, "data")
                     shutil.move(
                         Path.joinpath(tmp_data, "config.json.example"),
-                        Path.joinpath(tmp_data, "config.json"),
+                        Path.joinpath(self.data_dir, "config.json"),
                     )
                     shutil.move(
                         Path.joinpath(self.tmp_dir, "genesis", "genesis.json"),
-                        Path.joinpath(tmp_data, "genesis.json"),
+                        Path.joinpath(self.data_dir, "genesis.json"),
                     )
 
                     tmp_bin = Path.joinpath(self.tmp_dir, "bin")
@@ -279,7 +284,8 @@ class AlgoDeploy:
                             exe_path = Path.joinpath(tmp_bin, exe)
                             exe_path.unlink()
 
-                    shutil.move(tmp_bin, self.bin_dir)
+                    shutil.rmtree(self.bin_dir)
+                    shutil.move(tmp_bin, self.base_dir)
 
             with yaspin(text="Performing initial node configuration"):
                 self.config()
