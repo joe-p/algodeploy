@@ -14,20 +14,21 @@ Options:
   -h --help     Show this screen.
   --version     Show version.
 """
-from docopt import docopt
-import urllib.request
-from tqdm import tqdm
-from pathlib import Path
+import json
 import platform
-import requests
 import re
-import tarfile
 import shutil
 import subprocess
 import sys
-import json
-from yaspin import yaspin
+import tarfile
 import time
+import urllib.request
+from pathlib import Path
+
+import requests
+from docopt import docopt
+from tqdm import tqdm
+from yaspin import yaspin
 
 DEFAULT_ALGOD_PORT = 8888
 DEFAULT_KMD_PORT = 9999
@@ -35,14 +36,14 @@ DEFAULT_KMD_PORT = 9999
 
 # https://stackoverflow.com/a/53877507
 class DownloadProgressBar(tqdm):
-    def update_to(self, b=1, bsize=1, tsize=None):
-        if tsize is not None:
+    def update_to(self, b: int = 1, bsize: int = 1, tsize: int = 0) -> None:
+        if tsize:
             self.total = tsize
         self.update(b * bsize - self.n)
 
 
 class AlgoDeploy:
-    def __init__(self):
+    def __init__(self) -> None:
         self.home_dir = Path.home()
         self.algodeploy_dir = Path.joinpath(self.home_dir, ".algodeploy")
         self.tmp_dir = Path.joinpath(self.algodeploy_dir, "tmp")
@@ -62,9 +63,9 @@ class AlgoDeploy:
         self.bin_dir = Path.joinpath(self.base_dir, "bin")
         self.data_dir = Path.joinpath(self.base_dir, "data")
 
-    def config(self):
+    def config(self) -> None:
         self.start()
-        kmd_dir = list(self.data_dir.glob("kmd-*"))[0]
+        kmd_dir = next(iter(self.data_dir.glob("kmd-*")))
         kmd_config = Path.joinpath(kmd_dir, "kmd_config.json")
         self.update_json(
             kmd_config, address=f"0.0.0.0:{DEFAULT_KMD_PORT}", allowed_origins=["*"]
@@ -86,15 +87,15 @@ class AlgoDeploy:
         )
         self.goal("node generatetoken")
 
-    def stop(self, silent=True):
+    def stop(self, *, silent: bool = True) -> None:
         self.goal("node stop", exit_on_error=False, silent=silent)
         self.goal("kmd stop", exit_on_error=False, silent=silent)
 
-    def start(self, silent=True):
+    def start(self, *, silent: bool = True) -> None:
         self.goal("node start", silent=silent)
         self.goal("kmd start -t 0", silent=silent)
 
-    def parse_args(self, args=sys.argv[1:]):
+    def parse_args(self, args: list[str] = sys.argv[1:]) -> None:
         # Handle goal seperately to avoid conflicts with docopt on --help and --version
         if args[0] == "goal":
             self.goal(" ".join(args[1:]), silent=False)
@@ -121,7 +122,7 @@ class AlgoDeploy:
                 force_download=arguments["--force-download"],
             )
 
-    def update_json(self, file, **kwargs):
+    def update_json(self, file: Path, **kwargs: dict[str, str]) -> None:
         if Path.exists(file):
             with open(file, "r+") as f:
                 data = json.load(f)
@@ -134,7 +135,9 @@ class AlgoDeploy:
                 json.dump(kwargs, f, indent=4)
                 f.truncate()
 
-    def goal(self, args, exit_on_error=True, silent=True):
+    def goal(
+        self, args: list[str], *, exit_on_error: bool = True, silent: bool = True
+    ) -> None:
         goal_path = Path.joinpath(self.bin_dir, "goal")
 
         if platform.system() == "Windows":
@@ -142,12 +145,12 @@ class AlgoDeploy:
 
         self.cmd(f"{goal_path} -d {self.data_dir} {args}", exit_on_error, silent=silent)
 
-    def extract_archive(self, tarball, dir):
-        with yaspin(text=f"Extracting {tarball} to {dir}"):
+    def extract_archive(self, tarball: Path, target: Path) -> None:
+        with yaspin(text=f"Extracting {tarball} to {target}"):
             with tarfile.open(tarball) as f:
-                f.extractall(dir)
+                f.extractall(target)
 
-    def create_tarball(self, tarball, dir_dict: dict[str, Path]):
+    def create_tarball(self, tarball: Path, dir_dict: dict[str, Path]) -> None:
         with yaspin(text=f"Creating {tarball}"):
             with tarfile.open(
                 tarball,
@@ -156,15 +159,15 @@ class AlgoDeploy:
                 for name in dir_dict:
                     tar.add(dir_dict[name], arcname=name)
 
-    def catchup(self):
+    def catchup(self) -> None:
         catchpoint = requests.get(
             "https://algorand-catchpoints.s3.us-east-2.amazonaws.com/channel/mainnet/latest.catchpoint"
         ).text
         self.goal(f"node catchup {catchpoint}")
 
-    def update(self, release, force_download=False):
+    def update(self, release: str, *, force_download: bool = False) -> None:
         version_string = self.get_version(release)  # For example: v3.10.0-stable
-        version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
+        version = re.findall(r"\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
         release_channel = re.findall("-(.*)", version_string)[0]  # For example: stable
         system = platform.system().lower()
         machine = platform.machine().lower()
@@ -201,7 +204,9 @@ class AlgoDeploy:
 
         self.start()
 
-    def create(self, release, force_download, base_dir=None):
+    def create(
+        self, release: str, base_dir: str | None = None, *, force_download: bool
+    ) -> None:
         # Stop algod and kmd if they are running to prevent orphaned processes
         self.stop()
 
@@ -212,7 +217,7 @@ class AlgoDeploy:
             self.bin_dir = Path.joinpath(self.base_dir, "bin")
 
         version_string = self.get_version(release)  # For example: v3.10.0-stable
-        version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
+        version = re.findall(r"\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
         release_channel = re.findall("-(.*)", version_string)[0]  # For example: stable
         system = platform.system().lower()
         machine = platform.machine().lower()
@@ -289,8 +294,11 @@ class AlgoDeploy:
             token = Path.joinpath(self.data_dir, "algod.token").read_text()
             previous_last_round = 0
 
-            # Sometimes when starting a node for the first time it freezes for a couple of seconds before you can actually start a catchup
-            # This loop will wait until the node actually starts syncing before running "goal node catchup"
+            # Sometimes when starting a node for the first time it freezes for a couple
+            # of seconds before you can actually start a catchup
+            #
+            # This loop will wait until the node actually starts syncing before running
+            # "goal node catchup"
             while True:
                 response = requests.get(
                     f"http://localhost:{DEFAULT_ALGOD_PORT}/v2/status",
@@ -303,7 +311,8 @@ class AlgoDeploy:
 
                 last_round = response.json()["last-round"]
 
-                # somtimes the node stays stuck at a low initial round for a while, so we only break out of the loop if the round has increased
+                # somtimes the node stays stuck at a low initial round for a while, so
+                # we only break out of the loop if the round has increased
                 if previous_last_round != 0 and last_round > previous_last_round:
                     break
 
@@ -313,7 +322,7 @@ class AlgoDeploy:
         self.catchup()
         print('Now catching up to network. Use "algodeploy status" to check progress')
 
-    def download_url(self, url, output_path):
+    def download_url(self, url: str, output_path: Path) -> None:
         """
         Download a file from a URL to a specified path with a progress bar
         """
@@ -324,7 +333,7 @@ class AlgoDeploy:
                 url, filename=output_path, reporthook=t.update_to
             )
 
-    def get_version(self, match):
+    def get_version(self, match: str) -> None:
         """
         Get the latest release from github that matches match
         """
@@ -337,7 +346,9 @@ class AlgoDeploy:
                     return release["tag_name"]
 
     # https://stackoverflow.com/a/57970619
-    def cmd(self, cmd_str, exit_on_error=True, silent=False):
+    def cmd(
+        self, cmd_str: str, *, exit_on_error: bool = True, silent: bool = False
+    ) -> None:
         """
         Execute a system command with realtime output
         """
@@ -368,7 +379,9 @@ class AlgoDeploy:
 
         return rc
 
-    def msys_cmd(self, cmd_str, exit_on_error=True, silent=False):
+    def msys_cmd(
+        self, cmd_str: str, *, exit_on_error: bool = True, silent: bool = False
+    ) -> None:
         """
         On Windows, execute a command with realtime output in a msys2/MINGW64 shell
         """
@@ -383,13 +396,13 @@ class AlgoDeploy:
             silent,
         )
 
-    def prompt(self, text):
+    def prompt(self, text: str) -> bool:
         reply = None
         while reply not in ("y", "n"):
             reply = input(f"{text} (y/n): ").casefold()
         return reply == "y"
 
-    def build_from_source(self, tag, move_data_files=True):
+    def build_from_source(self, tag: str, *, move_data_files: bool = True) -> None:
         cmd_function = self.cmd
 
         if platform.system() == "Windows":
@@ -411,10 +424,13 @@ class AlgoDeploy:
                 )
 
             cmd_function = self.msys_cmd
-            # pacman can sometimes hang when checking space in msys2 shell, so it has been disabled
+
+            # pacman can sometimes hang when checking space in msys2 shell, so it has
+            # been disabled
             cmd_function("sed -i 's/^CheckSpace/#CheckSpace/g' /etc/pacman.conf")
 
-            # Download and install go package from mirror because pacman can sometimes be slow
+            # Download and install go package from mirror because pacman can sometimes
+            # be slow
             go_pkg = Path.joinpath(
                 self.download_dir, "mingw-w64-x86_64-go-1.19-1-any.pkg.tar.zst"
             )
@@ -433,7 +449,8 @@ class AlgoDeploy:
 
         tarball = tarfile.open(tarball_path)
 
-        # Get the name of the directory that the archive will extract to and remove it if it exists
+        # Get the name of the directory that the archive will extract to and remove it
+        # if it exists
         src_dir = Path.joinpath(self.tmp_dir, Path(tarball.getnames()[0]).name)
         shutil.rmtree(path=src_dir, ignore_errors=True)
 
@@ -459,7 +476,7 @@ class AlgoDeploy:
         shutil.rmtree(self.bin_dir)
         self.bin_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-        for bin in ["algod", "goal", "kmd", "tealdbg"]:
+        for bin_file in ["algod", "goal", "kmd", "tealdbg"]:
             if platform.system() == "Windows":
                 bin_path = Path.joinpath(
                     self.msys_dir,
@@ -467,7 +484,7 @@ class AlgoDeploy:
                     self.home_dir.name,
                     "go",
                     "bin",
-                    f"{bin}.exe",
+                    f"{bin_file}.exe",
                 )
             else:
                 bin_path = Path.joinpath(self.home_dir, "go", "bin", bin)
