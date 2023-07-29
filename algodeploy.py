@@ -3,6 +3,7 @@
 
 Usage:
   algodeploy create [--base-dir=PATH] [--force-download] [<release>]
+  algodeploy update [--force-download] [<release>]
   algodeploy catchup
   algodeploy start
   algodeploy stop
@@ -84,13 +85,13 @@ class AlgoDeploy:
         )
         self.goal("node generatetoken")
 
-    def stop(self):
-        self.goal("node stop", exit_on_error=False)
-        self.goal("kmd stop", exit_on_error=False)
+    def stop(self, silent=True):
+        self.goal("node stop", exit_on_error=False, silent=silent)
+        self.goal("kmd stop", exit_on_error=False, silent=silent)
 
-    def start(self):
-        self.goal("node start")
-        self.goal("kmd start -t 0")
+    def start(self, silent=True):
+        self.goal("node start", silent=silent)
+        self.goal("kmd start -t 0", silent=silent)
 
     def parse_args(self, args=sys.argv[1:]):
         # Handle goal seperately to avoid conflicts with docopt on --help and --version
@@ -106,13 +107,18 @@ class AlgoDeploy:
                 base_dir=arguments["--base-dir"],
             )
         elif arguments["start"]:
-            self.start()
+            self.start(silent=False)
         elif arguments["stop"]:
-            self.stop()
+            self.stop(silent=False)
         elif arguments["status"]:
             self.goal("node status", silent=False)
         elif arguments["catchup"]:
             self.catchup()
+        elif arguments["update"]:
+            self.update(
+                release=arguments["<release>"] or "stable",
+                force_download=arguments["--force-download"],
+            )
 
     def update_json(self, file, **kwargs):
         if Path.exists(file):
@@ -135,8 +141,8 @@ class AlgoDeploy:
 
         self.cmd(f"{goal_path} -d {self.data_dir} {args}", exit_on_error, silent=silent)
 
-    def restore_archive(self, tarball, dir):
-        with yaspin(text=f"Restoring {tarball} to {dir}"):
+    def extract_archive(self, tarball, dir):
+        with yaspin(text=f"Extracting {tarball} to {dir}"):
             with tarfile.open(tarball) as f:
                 f.extractall(dir)
 
@@ -149,38 +155,52 @@ class AlgoDeploy:
                 for name in dir_dict:
                     tar.add(dir_dict[name], arcname=name)
 
-    def download_release(self, url, tarball_path):
-        try:
-            self.download_url(url, tarball_path)
-        except Exception as e:
-            print(f"Error downloading {url}: {e}")
-            return False
-
-        with yaspin(text="Extracting node software"):
-            with tarfile.open(tarball_path) as f:
-                f.extractall(path=self.algodeploy_dir)
-            shutil.move(
-                Path.joinpath(self.data_dir, "config.json.example"),
-                Path.joinpath(self.data_dir, "config.json"),
-            )
-            shutil.move(
-                Path.joinpath(self.algodeploy_dir, "genesis", "genesis.json"),
-                Path.joinpath(self.data_dir, "genesis.json"),
-            )
-            shutil.rmtree(Path.joinpath(self.algodeploy_dir, "genesis"))
-            shutil.rmtree(Path.joinpath(self.algodeploy_dir, "test-utils"))
-
-            for exe in self.bin_dir.glob("*"):
-                if exe.name not in ["algod", "goal", "kmd"]:
-                    exe_path = Path.joinpath(self.bin_dir, exe)
-                    exe_path.unlink()
-        return True
-
     def catchup(self):
         catchpoint = requests.get(
             "https://algorand-catchpoints.s3.us-east-2.amazonaws.com/channel/mainnet/latest.catchpoint"
         ).text
         self.goal(f"node catchup {catchpoint}")
+
+    def update(self, release, force_download=False):
+        version_string = self.get_version(release)  # For example: v3.10.0-stable
+        version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
+        release_channel = re.findall("-(.*)", version_string)[0]  # For example: stable
+        system = platform.system().lower()
+        machine = platform.machine().lower()
+
+        if machine == "x86_64":
+            machine = "amd64"
+
+        algodeploy_tarball = Path.joinpath(
+            Path.joinpath(self.algodeploy_dir, "archives"),
+            f"algodeploy_{system}-{machine}_{version_string}.tar.gz",
+        )
+
+        self.stop()
+
+        tmp_dir = Path.joinpath(self.algodeploy_dir, "tmp")
+
+        if not force_download and algodeploy_tarball.exists():
+            self.extract_archive(algodeploy_tarball, tmp_dir)
+            shutil.rmtree(self.bin_dir)
+            shutil.move(Path.joinpath(tmp_dir, "bin"), self.base_dir)
+            for exe in self.bin_dir.glob("*"):
+                if exe.name not in ["algod", "goal", "kmd"]:
+                    exe_path = Path.joinpath(self.bin_dir, exe)
+                    exe_path.unlink()
+        else:
+            tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
+            tarball_path = Path.joinpath(self.download_dir, tarball)
+            aws_url = f"https://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
+
+            try:
+                self.download_url(aws_url, tarball_path)
+
+            except Exception as e:
+                print(f"Error downloading {aws_url}: {e}")
+                self.build_from_source(version_string, move_data_files=False)
+
+        self.start()
 
     def create(self, release, force_download, base_dir=None):
         # Stop algod and kmd if they are running to prevent orphaned processes
@@ -203,7 +223,7 @@ class AlgoDeploy:
 
         archive_dir = Path.joinpath(self.algodeploy_dir, "archives")
 
-        self.tarball = Path.joinpath(
+        algodeploy_tarball = Path.joinpath(
             Path.joinpath(self.algodeploy_dir, "archives"),
             f"algodeploy_{system}-{machine}_{version_string}.tar.gz",
         )
@@ -218,25 +238,46 @@ class AlgoDeploy:
 
         archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
-        if not force_download and self.tarball.exists():
-            self.restore_archive(self.tarball, self.base_dir)
+        if not force_download and algodeploy_tarball.exists():
+            self.extract_archive(algodeploy_tarball, self.base_dir)
         else:
             tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
             tarball_path = Path.joinpath(self.download_dir, tarball)
             aws_url = f"https://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
-            gh_url = f"https://github.com/algorand/go-algorand/releases/download/{version_string}/{tarball}"
 
-            if not (
-                self.download_release(aws_url, tarball_path)
-                or self.download_release(gh_url, tarball_path)
-            ):
+            try:
+                self.download_url(aws_url, tarball_path)
+
+            except Exception as e:
+                print(f"Error downloading {aws_url}: {e}")
                 self.build_from_source(version_string)
+
+            with yaspin(text="Extracting node software"):
+                with tarfile.open(tarball_path) as f:
+                    f.extractall(path=self.algodeploy_dir)
+
+                shutil.move(
+                    Path.joinpath(self.data_dir, "config.json.example"),
+                    Path.joinpath(self.data_dir, "config.json"),
+                )
+                shutil.move(
+                    Path.joinpath(self.algodeploy_dir, "genesis", "genesis.json"),
+                    Path.joinpath(self.data_dir, "genesis.json"),
+                )
+
+                shutil.rmtree(Path.joinpath(self.algodeploy_dir, "genesis"))
+                shutil.rmtree(Path.joinpath(self.algodeploy_dir, "test-utils"))
+
+                for exe in self.bin_dir.glob("*"):
+                    if exe.name not in ["algod", "goal", "kmd"]:
+                        exe_path = Path.joinpath(self.bin_dir, exe)
+                        exe_path.unlink()
 
             with yaspin(text="Performing initial node configuration"):
                 self.config()
 
             self.create_tarball(
-                self.tarball, {"bin": self.bin_dir, "data": self.data_dir}
+                algodeploy_tarball, {"bin": self.bin_dir, "data": self.data_dir}
             )
 
         with yaspin(text="Waiting for node to start"):
@@ -345,7 +386,7 @@ class AlgoDeploy:
             reply = input(f"{text} (y/n): ").casefold()
         return reply == "y"
 
-    def build_from_source(self, tag):
+    def build_from_source(self, tag, move_data_files=True):
         cmd_function = self.cmd
 
         if platform.system() == "Windows":
@@ -399,16 +440,20 @@ class AlgoDeploy:
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go ./scripts/configure_dev.sh")
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go make")
 
-        shutil.move(
-            Path.joinpath(src_dir, "installer", "config.json.example"),
-            Path.joinpath(self.data_dir, "config.json"),
-        )
+        if move_data_files:
+            shutil.move(
+                Path.joinpath(src_dir, "installer", "config.json.example"),
+                Path.joinpath(self.data_dir, "config.json"),
+            )
 
-        shutil.move(
-            Path.joinpath(src_dir, "installer", "genesis", "mainnet", "genesis.json"),
-            Path.joinpath(self.data_dir, "genesis.json"),
-        )
+            shutil.move(
+                Path.joinpath(
+                    src_dir, "installer", "genesis", "mainnet", "genesis.json"
+                ),
+                Path.joinpath(self.data_dir, "genesis.json"),
+            )
 
+        shutil.rmtree(self.bin_dir)
         for bin in ["algod", "goal", "kmd", "tealdbg"]:
             if platform.system() == "Windows":
                 bin_path = Path.joinpath(
