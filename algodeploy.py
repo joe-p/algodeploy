@@ -242,7 +242,7 @@ class AlgoDeploy:
         else:
             tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
             tarball_path = Path.joinpath(self.download_dir, tarball)
-            aws_url = f"hxttps://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
+            aws_url = f"https://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
 
             try:
                 self.download_url(aws_url, tarball_path)
