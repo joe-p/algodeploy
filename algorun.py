@@ -302,14 +302,17 @@ class algorun:
             self.start()
 
             token = Path.joinpath(self.data_dir, "algod.token").read_text()
-            algod_port = int(Path.joinpath(
-                self.data_dir, "algod.net"
-            ).read_text().strip().split(":")[-1])
+            algod_port = int(
+                Path.joinpath(self.data_dir, "algod.net")
+                .read_text()
+                .strip()
+                .split(":")[-1]
+            )
 
             kmd_dir = next(iter(self.data_dir.glob("kmd-*")))
-            kmd_port = int(Path.joinpath(
-                kmd_dir, "kmd.net"
-            ).read_text().strip().split(":")[-1])
+            kmd_port = int(
+                Path.joinpath(kmd_dir, "kmd.net").read_text().strip().split(":")[-1]
+            )
 
             kmd_config = Path.joinpath(kmd_dir, "kmd_config.json")
             self.update_json(
@@ -353,7 +356,9 @@ class algorun:
             y.ok("✓")
 
         self.catchup()
-        print('Now catching up to network. Use "algorun status" to check progress or "algorun dashboard" to view the dashboard')  # noqa: E501
+        print(
+            'Now catching up to network. Use "algorun status" to check progress or "algorun dashboard" to view the dashboard'
+        )  # noqa: E501
 
     def download_url(self, url: str, output_path: Path) -> None:
         """
@@ -431,8 +436,8 @@ class algorun:
         env_path = Path.joinpath(self.msys_dir, "usr/bin/env.exe")
         self.cmd(
             f'{env_path} MSYSTEM=MINGW64 /usr/bin/bash -lc "{cmd_str}"',
-            exit_on_error,
-            silent,
+            exit_on_error=exit_on_error,
+            silent=silent,
         )
 
     def prompt(self, text: str) -> bool:
@@ -553,13 +558,13 @@ class algorun:
         )
 
         self.extract_archive(tarball_path, self.algorun_dir)
-        algod_port = Path.joinpath(
-            self.data_dir, "algod.net"
-        ).read_text().strip().split(":")[-1]
+        algod_port = (
+            Path.joinpath(self.data_dir, "algod.net").read_text().strip().split(":")[-1]
+        )
 
-        admin_token = Path.joinpath(
-            self.data_dir, "algod.admin.token"
-        ).read_text().strip()
+        admin_token = (
+            Path.joinpath(self.data_dir, "algod.admin.token").read_text().strip()
+        )
 
         with yaspin(text="Setting up alloctrl") as y:
             env = f"""PUBLIC_ALGOD_HOST=127.0.0.1
@@ -604,6 +609,7 @@ class algorun:
 
             y.text = "Dashboard started at http://localhost:" + port
             y.ok("✓")
+
 
 if __name__ == "__main__":
     ad = algorun()

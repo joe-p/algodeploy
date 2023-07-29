@@ -6,7 +6,7 @@ authors = ["Joe Polny <joepolny@gmail.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.10,<3.13"
 tqdm = "^4.65.0"
 requests = "^2.31.0"
 docopt = "^0.6.2"
@@ -20,6 +20,7 @@ ruff = "^0.0.280"
 types-docopt = "^0.6.11.3"
 types-requests = "^2.31.0.2"
 types-tqdm = "^4.65.0.2"
+pyinstaller = "^5.13.0"
 
 [build-system]
 requires = ["poetry-core"]
