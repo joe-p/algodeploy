@@ -370,14 +370,18 @@ class AlgoDeploy:
             errors="replace",
         )
 
-        while True:
-            realtime_output = process.stdout.readline()
+        try: 
+            while True:
+                realtime_output = process.stdout.readline()
 
-            if realtime_output == "" and process.poll() is not None:
-                break
+                if realtime_output == "" and process.poll() is not None:
+                    break
 
-            if not silent and realtime_output:
-                print(realtime_output.strip(), flush=True)
+                if not silent and realtime_output:
+                    print(realtime_output.strip(), flush=True)
+        except KeyboardInterrupt:
+            process.terminate()
+            exit(0)
 
         rc = process.wait()
         if exit_on_error and rc != 0:
