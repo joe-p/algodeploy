@@ -45,6 +45,7 @@ class AlgoDeploy:
     def __init__(self):
         self.home_dir = Path.home()
         self.algodeploy_dir = Path.joinpath(self.home_dir, ".algodeploy")
+        self.tmp_dir = Path.joinpath(self.algodeploy_dir, "tmp")
         self.download_dir = Path.joinpath(self.algodeploy_dir, "downloads")
         self.msys_dir = Path.joinpath(self.home_dir, "msys64")
 
@@ -178,12 +179,10 @@ class AlgoDeploy:
 
         self.stop()
 
-        tmp_dir = Path.joinpath(self.algodeploy_dir, "tmp")
-
         if not force_download and algodeploy_tarball.exists():
-            self.extract_archive(algodeploy_tarball, tmp_dir)
+            self.extract_archive(algodeploy_tarball, self.tmp_dir)
             shutil.rmtree(self.bin_dir)
-            shutil.move(Path.joinpath(tmp_dir, "bin"), self.base_dir)
+            shutil.move(Path.joinpath(self.tmp_dir, "bin"), self.base_dir)
             for exe in self.bin_dir.glob("*"):
                 if exe.name not in ["algod", "goal", "kmd"]:
                     exe_path = Path.joinpath(self.bin_dir, exe)
@@ -243,7 +242,7 @@ class AlgoDeploy:
         else:
             tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
             tarball_path = Path.joinpath(self.download_dir, tarball)
-            aws_url = f"https://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
+            aws_url = f"hxttps://algorand-releases.s3.amazonaws.com/channel/{release_channel}/{tarball}"
 
             try:
                 self.download_url(aws_url, tarball_path)
@@ -251,27 +250,31 @@ class AlgoDeploy:
             except Exception as e:
                 print(f"Error downloading {aws_url}: {e}")
                 self.build_from_source(version_string)
+                download_error = e
 
-            with yaspin(text="Extracting node software"):
-                with tarfile.open(tarball_path) as f:
-                    f.extractall(path=self.algodeploy_dir)
+            if not download_error:
+                with yaspin(text="Extracting node software"):
+                    with tarfile.open(tarball_path) as f:
+                        f.extractall(path=self.tmp_dir)
 
-                shutil.move(
-                    Path.joinpath(self.data_dir, "config.json.example"),
-                    Path.joinpath(self.data_dir, "config.json"),
-                )
-                shutil.move(
-                    Path.joinpath(self.algodeploy_dir, "genesis", "genesis.json"),
-                    Path.joinpath(self.data_dir, "genesis.json"),
-                )
+                    tmp_data = Path.joinpath(self.tmp_dir, "data")
+                    shutil.move(
+                        Path.joinpath(tmp_data, "config.json.example"),
+                        Path.joinpath(tmp_data, "config.json"),
+                    )
+                    shutil.move(
+                        Path.joinpath(self.tmp_dir, "genesis", "genesis.json"),
+                        Path.joinpath(tmp_data, "genesis.json"),
+                    )
 
-                shutil.rmtree(Path.joinpath(self.algodeploy_dir, "genesis"))
-                shutil.rmtree(Path.joinpath(self.algodeploy_dir, "test-utils"))
+                    tmp_bin = Path.joinpath(self.tmp_dir, "bin")
 
-                for exe in self.bin_dir.glob("*"):
-                    if exe.name not in ["algod", "goal", "kmd"]:
-                        exe_path = Path.joinpath(self.bin_dir, exe)
-                        exe_path.unlink()
+                    for exe in tmp_bin.glob("*"):
+                        if exe.name not in ["algod", "goal", "kmd"]:
+                            exe_path = Path.joinpath(tmp_bin, exe)
+                            exe_path.unlink()
+
+                    shutil.move(tmp_bin, self.bin_dir)
 
             with yaspin(text="Performing initial node configuration"):
                 self.config()
@@ -431,10 +434,10 @@ class AlgoDeploy:
         tarball = tarfile.open(tarball_path)
 
         # Get the name of the directory that the archive will extract to and remove it if it exists
-        src_dir = Path.joinpath(self.download_dir, Path(tarball.getnames()[0]).name)
+        src_dir = Path.joinpath(self.tmp_dir, Path(tarball.getnames()[0]).name)
         shutil.rmtree(path=src_dir, ignore_errors=True)
 
-        tarball.extractall(path=self.download_dir)
+        tarball.extractall(path=self.tmp_dir)
         tarball.close()
 
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go ./scripts/configure_dev.sh")
@@ -454,6 +457,8 @@ class AlgoDeploy:
             )
 
         shutil.rmtree(self.bin_dir)
+        self.bin_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
+
         for bin in ["algod", "goal", "kmd", "tealdbg"]:
             if platform.system() == "Windows":
                 bin_path = Path.joinpath(
