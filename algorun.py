@@ -353,7 +353,7 @@ class algorun:
             y.ok("✓")
 
         self.catchup()
-        print('Now catching up to network. Use "algorun status" to check progress or "algorun dashboard" to view the dashboard"')  # noqa: E501
+        print('Now catching up to network. Use "algorun status" to check progress or "algorun dashboard" to view the dashboard')  # noqa: E501
 
     def download_url(self, url: str, output_path: Path) -> None:
         """
