@@ -2,7 +2,7 @@
 """algodeploy
 
 Usage:
-  algodeploy create [--force-download] [<release>]
+  algodeploy create [--base-dir=PATH] [--force-download] [<release>]
   algodeploy catchup
   algodeploy start
   algodeploy stop
@@ -45,9 +45,20 @@ class AlgoDeploy:
         self.home_dir = Path.home()
         self.algodeploy_dir = Path.joinpath(self.home_dir, ".algodeploy")
         self.download_dir = Path.joinpath(self.algodeploy_dir, "downloads")
-        self.data_dir = Path.joinpath(self.algodeploy_dir, "data")
-        self.bin_dir = Path.joinpath(self.algodeploy_dir, "bin")
         self.msys_dir = Path.joinpath(self.home_dir, "msys64")
+
+        self.config_file = Path.joinpath(self.algodeploy_dir, "config.json")
+
+        if (self.config_file).exists():
+            config = json.loads(self.config_file.read_text())
+            if config["base_dir"]:
+                self.base_dir = Path(config["base_dir"])
+
+        if not hasattr(self, "base_dir"):
+            self.base_dir = Path.joinpath(self.algodeploy_dir)
+
+        self.bin_dir = Path.joinpath(self.base_dir, "bin")
+        self.data_dir = Path.joinpath(self.base_dir, "data")
 
     def config(self):
         self.start()
@@ -92,6 +103,7 @@ class AlgoDeploy:
             self.create(
                 release=arguments["<release>"] or "stable",
                 force_download=arguments["--force-download"],
+                base_dir=arguments["--base-dir"],
             )
         elif arguments["start"]:
             self.start()
@@ -170,9 +182,13 @@ class AlgoDeploy:
         ).text
         self.goal(f"node catchup {catchpoint}")
 
-    def create(self, release, force_download):
+    def create(self, release, force_download, base_dir=None):
         # Stop algod and kmd if they are running to prevent orphaned processes
         self.stop()
+
+        if base_dir:
+            self.base_dir = Path(base_dir).resolve()
+            self.update_json(self.config_file, base_dir=self.base_dir.__str__())
 
         version_string = self.get_version(release)  # For example: v3.10.0-stable
         version = re.findall("\d+\.\d+\.\d+", version_string)[0]  # For example: 3.10.0
@@ -201,7 +217,7 @@ class AlgoDeploy:
         archive_dir.mkdir(mode=0o755, parents=True, exist_ok=True)
 
         if not force_download and self.tarball.exists():
-            self.restore_archive(self.tarball, self.algodeploy_dir)
+            self.restore_archive(self.tarball, self.base_dir)
         else:
             tarball = f"node_{release_channel}_{system}-{machine}_{version}.tar.gz"
             tarball_path = Path.joinpath(self.download_dir, tarball)
