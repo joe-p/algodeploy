@@ -361,7 +361,7 @@ class AlgoDeploy:
             ).json()
             for release in releases:
                 if match in release["tag_name"]:
-                    y.text = f"Latest node version matching '{match}' is {release['tag_name']}"
+                    y.text = f"Latest node version matching '{match}' is {release['tag_name']}"  # noqa: E501
                     y.ok("✓")
                     return release["tag_name"]
 
