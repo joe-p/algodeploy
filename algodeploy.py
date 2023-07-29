@@ -74,12 +74,12 @@ class AlgoDeploy:
         self.goal("node generatetoken")
 
     def stop(self):
-        self.goal("node stop", exit_on_error=False)
-        self.goal("kmd stop", exit_on_error=False)
+        self.goal("node stop", exit_on_error=False, silent=False)
+        self.goal("kmd stop", exit_on_error=False, silent=False)
 
     def start(self):
-        self.goal("node start")
-        self.goal("kmd start -t 0")
+        self.goal("node start", silent=False)
+        self.goal("kmd start -t 0", silent=False)
 
     def parse_args(self, args=sys.argv[1:]):
         # Handle goal seperately to avoid conflicts with docopt on --help and --version
@@ -98,7 +98,7 @@ class AlgoDeploy:
         elif arguments["stop"]:
             self.stop()
         elif arguments["status"]:
-            self.goal("node status")
+            self.goal("node status", silent=False)
         elif arguments["catchup"]:
             self.catchup()
 
