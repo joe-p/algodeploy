@@ -263,7 +263,7 @@ class AlgoDeploy:
                 download_error = e
 
             if not download_error:
-                with yaspin(text="Extracting node software") as y:
+                with yaspin(text="Extracting node software"):
                     with tarfile.open(tarball_path) as f:
                         f.extractall(path=self.tmp_dir)
 
@@ -370,7 +370,7 @@ class AlgoDeploy:
             errors="replace",
         )
 
-        try: 
+        try:
             while True:
                 realtime_output = process.stdout.readline()
 
