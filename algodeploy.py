@@ -381,6 +381,16 @@ class AlgoDeploy:
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go ./scripts/configure_dev.sh")
         cmd_function(f"cd {src_dir} && GOPATH=$HOME/go make")
 
+        shutil.move(
+            Path.joinpath(src_dir, "installer", "config.json.example"),
+            Path.joinpath(self.data_dir, "config.json"),
+        )
+
+        shutil.move(
+            Path.joinpath(src_dir, "installer", "genesis", "mainnet", "genesis.json"),
+            Path.joinpath(self.data_dir, "genesis.json"),
+        )
+
         for bin in ["algod", "goal", "kmd", "tealdbg"]:
             if platform.system() == "Windows":
                 bin_path = Path.joinpath(
